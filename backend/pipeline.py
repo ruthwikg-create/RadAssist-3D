@@ -128,8 +128,8 @@ class SpleenSegmentationModel:
         self.backend = SpleenUNetAdapter(self.checkpoint_path)
 
         self.checkpoint_sha256 = self.backend.checkpoint_sha256
-        self.validation_dice = 0.961
-        self.config: dict[str, Any] = {}
+        self.validation_dice = self.backend.validation_dice
+        self.config: dict[str, Any] = self.backend.metadata()
         self.inference_lock = threading.Lock()
 
     @torch.inference_mode()
@@ -150,7 +150,7 @@ class SpleenSegmentationModel:
         # to SimpleITK order before restoring image geometry.
         model_array = np.transpose(array, (2, 1, 0))
 
-        mask_model_array = self.backend.predict(model_array)
+        mask_model_array = self.backend.predict(model_array, already_scaled=False)
 
         if mask_model_array.ndim != 3:
             raise ValueError(
@@ -775,10 +775,10 @@ class RadAssistInferenceEngine:
 
         canonical = canonicalize_ct(original_ct)
         resampled = resample_image(canonical, target_spacing=TARGET_SPACING_MM, interpolator=sitk.sitkLinear, pixel_id=sitk.sitkFloat32)
-        model_input = normalize_ct_for_model(resampled)
-
+        # The checkpoint-aware adapter owns intensity preprocessing so runtime
+        # preprocessing cannot silently diverge from the loaded model artifact.
         with self.model.inference_lock:
-            predicted_resampled_mask = self.model.predict(model_input)
+            predicted_resampled_mask = self.model.predict(resampled)
 
         mask = sitk.Resample(
             predicted_resampled_mask,
@@ -824,21 +824,26 @@ class RadAssistInferenceEngine:
             mesh_step_size=actual_step,
             measurement_quality=measurement_quality,
             model_provenance={
-    "name": "RadAssist Spleen CT Segmentation",
-    "architecture": "MONAI UNet 3D",
-    "dataset": "Medical Segmentation Decathlon Task09 Spleen",
-    "checkpoint_loaded": True,
-    "checkpoint_sha256": self.model.checkpoint_sha256,
-    "benchmark_mean_dice": 0.961,
-    "preprocessing": {
-        "orientation": "RAS",
-        "spacing_mm": list(TARGET_SPACING_MM),
-        "hu_range": [HU_MIN, HU_MAX],
-        "normalization": "Scale HU range [-57, 164] to [0, 1]",
-        "roi_size": [96, 96, 96],
-        "sliding_window_overlap": 0.5,
-    },
-},
+                "name": "RadAssist Spleen CT Segmentation",
+                "architecture": self.model.config.get("architecture", "Unknown"),
+                "dataset": "Medical Segmentation Decathlon Task09 Spleen",
+                "checkpoint_loaded": True,
+                "checkpoint_sha256": self.model.checkpoint_sha256,
+                "benchmark_mean_dice": self.model.validation_dice,
+                "preprocessing": {
+                    "orientation": "RAS",
+                    "spacing_mm": list(self.model.config.get("required_spacing_mm", TARGET_SPACING_MM)),
+                    "hu_range": self.model.config.get("intensity_range_hu", [HU_MIN, HU_MAX]),
+                    "normalization": (
+                        "Scale intensity range and nonzero z-score"
+                        if self.model.config.get("normalize_nonzero")
+                        else "Scale intensity range to [0, 1]"
+                    ),
+                    "roi_size": self.model.config.get("roi_size", [96, 96, 96]),
+                    "sliding_window_overlap": self.model.config.get("overlap", SW_OVERLAP),
+                },
+                "checkpoint_metadata": self.model.config,
+            },
         )
         case_id = case_directory.name
         preview_path = case_directory / "preview.nii"
