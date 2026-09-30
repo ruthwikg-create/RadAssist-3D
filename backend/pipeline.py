@@ -70,6 +70,7 @@ class VolumeData:
     hu_calibrated: bool = False
     rescale_slope: float | None = None
     rescale_intercept: float | None = None
+    input_notes: list[str] | None = None
 
 
 @dataclass
@@ -329,8 +330,38 @@ def load_medical_volume(input_paths: list[Path], extraction_root: Path) -> Volum
 
     if len(input_paths) == 1 and nii:
         image = sitk.ReadImage(str(input_paths[0]))
+        input_notes: list[str] = []
+
+        if image.GetDimension() == 4:
+            # A 4D NIfTI can represent time, echo, phase, or another extra
+            # acquisition dimension. The current anatomy models accept one
+            # 3D volume, so select a deterministic frame rather than failing
+            # with the generic "requires a 3D volume" message.
+            frame_index = int(os.getenv("RADASSIST_NIFTI_FRAME_INDEX", "0"))
+            size = list(image.GetSize())
+            frame_count = int(size[3])
+            if frame_count <= 0:
+                raise ValueError("The 4D NIfTI contains no usable frames.")
+            if frame_index < 0 or frame_index >= frame_count:
+                raise ValueError(
+                    f"RADASSIST_NIFTI_FRAME_INDEX={frame_index} is outside "
+                    f"the available 4D frame range 0..{frame_count - 1}."
+                )
+            extract_size = [int(v) for v in size]
+            extract_size[3] = 0
+            extract_index = [0, 0, 0, frame_index]
+            image = sitk.Extract(image, extract_size, extract_index)
+            input_notes.append(
+                f"4D NIfTI reduced to frame {frame_index} of {frame_count}; "
+                "the selected frame is not independently verified as the intended acquisition."
+            )
+
         if image.GetDimension() != 3:
-            raise ValueError("RadAssist 3D requires a 3D NIfTI volume.")
+            raise ValueError(
+                f"Unsupported NIfTI dimensionality: {image.GetDimension()}D. "
+                "RadAssist models currently require a 3D spatial volume."
+            )
+
         return VolumeData(
             image=image,
             source_type="NIFTI",
@@ -339,6 +370,7 @@ def load_medical_volume(input_paths: list[Path], extraction_root: Path) -> Volum
             hu_calibrated=False,
             rescale_slope=None,
             rescale_intercept=None,
+            input_notes=input_notes,
         )
 
     if len(input_paths) == 1 and zips:
