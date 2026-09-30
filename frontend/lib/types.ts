@@ -56,6 +56,16 @@ export type MeasurementQuality = {
   flags: string[];
 };
 
+export type AdvancedMetrics = {
+  bounding_box_mm: number[] | null;
+  principal_spread_mm: number[] | null;
+  sphericity: number | null;
+  compactness: number | null;
+  surface_to_volume_cm_inv: number | null;
+  foreground_voxels: number;
+  mesh_volume_cm3?: number | null;
+};
+
 export type ModelProvenance = {
   name: string;
   architecture: string;
@@ -117,6 +127,9 @@ export type CaseResult = {
   label_component_qa?: Record<string, LabelComponentQA>;
 
   measurement_quality?: MeasurementQuality;
+
+  advanced_metrics?: AdvancedMetrics;
+  input_notes?: string[];
 
   model_provenance?: ModelProvenance;
 
