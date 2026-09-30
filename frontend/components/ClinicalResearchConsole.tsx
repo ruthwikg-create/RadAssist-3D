@@ -16,7 +16,7 @@ import {
   ShieldCheck,
   Terminal,
   UploadCloud,
-  View3D,
+  Box,
   XCircle,
 } from "lucide-react";
 import type { BackendHealth, CaseResult, CaseSummary } from "../lib/types";
@@ -159,7 +159,7 @@ export default function ClinicalResearchConsole({
             ["Studies", FolderOpen, () => history[0] ? onOpenHistory(history[0]) : onSetError("No stored studies are available.")],
             ["Import DICOM/NIfTI", UploadCloud, onImport],
             ["MPR Viewer", Grid2X2, () => onModeChange("mpr")],
-            ["3D Reconstruction", View3D, () => onModeChange("ai")],
+            ["3D Reconstruction", Box, () => onModeChange("ai")],
             ["Quantification", BarChart3, () => onModeChange("research")],
             ["QA & Validation", ShieldCheck, () => onModeChange("research")],
             ["Research Console", Terminal, () => onModeChange("research")],
