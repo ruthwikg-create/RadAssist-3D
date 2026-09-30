@@ -103,6 +103,8 @@ class SegmentationResult:
     mesh_step_size: int
     measurement_quality: dict[str, Any] | None = None
     model_provenance: dict[str, Any] | None = None
+    advanced_metrics: dict[str, Any] | None = None
+    input_notes: list[str] | None = None
     target: str = "spleen"
     is_demo: bool = False
 
@@ -739,6 +741,77 @@ def _checkpoint_sha256(path: Path) -> str:
             digest.update(chunk)
     return digest.hexdigest()
 
+def advanced_shape_metrics(
+    mask: sitk.Image,
+    surface_area_cm2: float | None = None,
+    mesh_volume_cm3: float | None = None,
+) -> dict[str, Any]:
+    """Compute geometry descriptors that are useful for research QA.
+
+    These are descriptive shape metrics, not clinical biomarkers. Principal
+    spread is estimated from a bounded sample of foreground voxels to keep
+    memory predictable on large volumes.
+    """
+    array = sitk.GetArrayFromImage(mask)
+    foreground = array > 0
+    voxel_count = int(np.count_nonzero(foreground))
+    if voxel_count == 0:
+        return {
+            "bounding_box_mm": None,
+            "principal_spread_mm": None,
+            "sphericity": None,
+            "compactness": None,
+            "surface_to_volume_cm_inv": None,
+            "foreground_voxels": 0,
+        }
+
+    coords_zyx = np.argwhere(foreground)
+    spacing = np.asarray(mask.GetSpacing(), dtype=np.float64)
+    direction = np.asarray(mask.GetDirection(), dtype=np.float64).reshape(3, 3)
+    origin = np.asarray(mask.GetOrigin(), dtype=np.float64)
+
+    mins = coords_zyx.min(axis=0).astype(np.float64)
+    maxs = coords_zyx.max(axis=0).astype(np.float64)
+    # Bounding-box extent is reported in the image's physical axes. Direction
+    # does not change the voxel-axis lengths.
+    bbox_xyz = (maxs[::-1] - mins[::-1] + 1.0) * spacing
+
+    max_samples = 200_000
+    if len(coords_zyx) > max_samples:
+        stride = max(1, len(coords_zyx) // max_samples)
+        coords_zyx = coords_zyx[::stride][:max_samples]
+
+    xyz_index = coords_zyx[:, ::-1].astype(np.float64)
+    physical = xyz_index * spacing
+    physical = physical @ direction.T + origin
+    centered = physical - physical.mean(axis=0, keepdims=True)
+    covariance = np.cov(centered, rowvar=False) if len(physical) > 1 else np.zeros((3, 3))
+    eigenvalues = np.maximum(np.linalg.eigvalsh(covariance), 0.0)
+    principal_spread = (2.0 * np.sqrt(eigenvalues))[::-1]
+
+    volume = voxel_count * float(np.prod(spacing)) / 1000.0
+    sphericity = None
+    compactness = None
+    surface_to_volume = None
+    if surface_area_cm2 is not None and surface_area_cm2 > 0 and volume > 0:
+        sphericity = float(
+            (np.pi ** (1.0 / 3.0) * (6.0 * volume) ** (2.0 / 3.0))
+            / surface_area_cm2
+        )
+        compactness = float(36.0 * np.pi * volume * volume / (surface_area_cm2 ** 3))
+        surface_to_volume = float(surface_area_cm2 / volume)
+
+    return {
+        "bounding_box_mm": [round(float(v), 3) for v in bbox_xyz],
+        "principal_spread_mm": [round(float(v), 3) for v in principal_spread],
+        "sphericity": round(sphericity, 5) if sphericity is not None else None,
+        "compactness": round(compactness, 5) if compactness is not None else None,
+        "surface_to_volume_cm_inv": round(surface_to_volume, 5) if surface_to_volume is not None else None,
+        "foreground_voxels": voxel_count,
+        "mesh_volume_cm3": mesh_volume_cm3,
+    }
+
+
 def to_serializable(result: SegmentationResult, case_id: str, preview_url: str, mask_url: str) -> dict[str, Any]:
     return {
         "request_id": case_id,
@@ -763,6 +836,8 @@ def to_serializable(result: SegmentationResult, case_id: str, preview_url: str, 
         },
         "measurement_quality": result.measurement_quality or {},
         "model_provenance": result.model_provenance or {},
+        "advanced_metrics": result.advanced_metrics or {},
+        "input_notes": result.input_notes or [],
         "mesh": {
             "vertices": result.mesh.vertices,
             "faces": result.mesh.faces,
@@ -834,6 +909,11 @@ class RadAssistInferenceEngine:
             loaded.rescale_slope,
             loaded.rescale_intercept,
         )
+        advanced_metrics = advanced_shape_metrics(
+            mask,
+            surface_area_cm2=measurement_quality.get("surface_area_cm2"),
+            mesh_volume_cm3=measurement_quality.get("mesh_volume_cm3"),
+        )
         elapsed = perf_counter() - start
         result = SegmentationResult(
             mesh=mesh,
@@ -855,6 +935,8 @@ class RadAssistInferenceEngine:
             processing_seconds=round(elapsed, 3),
             mesh_step_size=actual_step,
             measurement_quality=measurement_quality,
+            advanced_metrics=advanced_metrics,
+            input_notes=loaded.input_notes or [],
             model_provenance={
                 "name": "RadAssist Spleen CT Segmentation",
                 "architecture": self.model.config.get("architecture", "Unknown"),
