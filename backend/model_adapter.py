@@ -43,8 +43,12 @@ MODEL_PATH = (
     else next(
         (
             candidate
-            for candidate in (DEFAULT_MODEL_PATH, *TRAINED_MODEL_PATHS)
-            if candidate.exists()
+            # Prefer the current metadata-bearing SegResNet checkpoint over
+            # the legacy UNet artifact. A stale legacy checkpoint may exist
+            # locally from an earlier RadAssist build and can otherwise be
+            # selected silently, producing an empty/invalid segmentation.
+            for candidate in (*TRAINED_MODEL_PATHS, DEFAULT_MODEL_PATH)
+            if candidate.is_file()
         ),
         _configured_candidate or TRAINED_MODEL_PATHS[0],
     )
@@ -301,12 +305,24 @@ class SpleenUNetAdapter:
         mask = np.argmax(
             logits,
             axis=0,
-        )
+        ).astype(np.uint8, copy=False)
 
-        return mask.astype(
-            np.uint8,
-            copy=False,
-        )
+        # A checkpoint can deserialize and execute successfully while still
+        # producing an all-background result. Do not let that failure mode
+        # masquerade as a valid segmentation; expose the condition to the
+        # pipeline with explicit diagnostics.
+        foreground_voxels = int(np.count_nonzero(mask))
+        if foreground_voxels == 0:
+            foreground_probability = float(
+                torch.softmax(torch.from_numpy(logits), dim=0)[1].max().item()
+            )
+            raise RuntimeError(
+                "Spleen checkpoint produced an empty foreground mask "
+                f"(0 voxels; maximum foreground probability={foreground_probability:.6f}). "
+                f"Checkpoint: {self.checkpoint_path}"
+            )
+
+        return mask
 
     def metadata(self) -> dict:
         return {
