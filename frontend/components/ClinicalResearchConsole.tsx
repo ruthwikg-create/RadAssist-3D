@@ -338,10 +338,47 @@ export default function ClinicalResearchConsole({
             </Card>
           </div>
         ) : section === "mpr" ? (
-          <div className="cw-mode-panel">
+          <div className="cw-mode-panel cw-clinical-page">
             <div className="cw-mode-title">CLINICAL MPR &amp; 3D</div>
-            <p>Existing RadAssist imaging controls are preserved below.</p>
-            <div id="cw-viewer-slot" className="cw-viewer-filter cw-viewer-only-mpr">{viewerContent}</div>
+            <p>Real source-derived Axial, Sagittal and Coronal MPR with synchronized navigation and high-resolution 3D reconstruction.</p>
+            <div className="cw-clinical-grid">
+              <div id="cw-viewer-slot" className="cw-viewer-filter cw-viewer-only-mpr">{viewerContent}</div>
+              <aside className="cw-clinical-inspector">
+                <Card>
+                  <CardTitle icon={<Microscope size={16} />} title="AI SEGMENTATION" meta={model?.checkpoint_loaded ? "LOADED" : "UNAVAILABLE"} />
+                  <div className="cw-inspector-model"><b>{model?.architecture ?? "Model unavailable"}</b><span>{model?.name ?? "Select a supported anatomy model."}</span><small>{result.source_type} · {result.modality} · {device.toUpperCase()}</small></div>
+                  <button type="button" className="cw-inspector-primary" onClick={() => goToSection("research")}>View AI / QA Results</button>
+                </Card>
+                <Card>
+                  <CardTitle icon={<Layers3 size={16} />} title="SEGMENTED STRUCTURES" meta={`${labels.length} MASKS`} />
+                  <div className="cw-structure-list">
+                    {labels.length ? labels.map((item) => (
+                      <div key={item.label}><span><i /> {item.name}</span><b>{n(item.volume_cm3, 1)} cm³</b><small>{item.voxel_count.toLocaleString()} voxels · {item.fraction_pct.toFixed(1)}%</small></div>
+                    )) : <div className="cw-inline-empty">No foreground structures are available.</div>}
+                  </div>
+                </Card>
+                <Card>
+                  <CardTitle icon={<ShieldCheck size={16} />} title="AI QUALITY GATE" meta={quality?.status ?? "REVIEW"} />
+                  <div className="cw-inspector-qa">
+                    <div><span>Connected components</span><b>{quality?.connected_components ?? "—"}</b></div>
+                    <div><span>Largest component</span><b>{n(quality?.largest_component_fraction_pct, 1)}%</b></div>
+                    <div><span>Mesh ↔ labelmap</span><b>{agreement == null ? "—" : `${agreement.toFixed(2)}%`}</b></div>
+                  </div>
+                </Card>
+                <Card>
+                  <CardTitle icon={<Activity size={16} />} title="WINDOW & LEVEL (LUT)" meta={result.modality === "MR" ? "MR NATIVE" : "CT"} />
+                  <div className="cw-lut-preview"><span>LEVEL</span><b>{n(result.hu_statistics.median_hu, 0)}</b></div>
+                  <div className="cw-lut-preview"><span>WIDTH</span><b>{n(result.hu_statistics.p95_hu == null || result.hu_statistics.p05_hu == null ? null : result.hu_statistics.p95_hu - result.hu_statistics.p05_hu, 0)}</b></div>
+                  <small className="cw-lut-note">{result.modality === "MR" ? "Native MR signal; values are not HU." : quality?.hu_calibrated ? "DICOM-derived HU calibration available." : "Source intensity is not independently HU calibrated."}</small>
+                </Card>
+                <Card>
+                  <div className="cw-inspector-actions">
+                    <button type="button" onClick={() => goToSection("research")}>Send to Research Console →</button>
+                    <button type="button" onClick={() => goToSection("export")}>Export DICOM SEG / NIFTI ↓</button>
+                  </div>
+                </Card>
+              </aside>
+            </div>
           </div>
         ) : section === "surface3d" ? (
           <div className="cw-mode-panel">
