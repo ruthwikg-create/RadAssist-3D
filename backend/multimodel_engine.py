@@ -17,6 +17,7 @@ try:
     from .pipeline import (
         create_mesh,
         _mesh_geometry_metrics,
+        advanced_shape_metrics,
         MeshData,
         load_medical_volume,
         write_sanitized_mask,
@@ -28,6 +29,7 @@ except ImportError:
     from pipeline import (
         create_mesh,
         _mesh_geometry_metrics,
+        advanced_shape_metrics,
         MeshData,
         load_medical_volume,
         write_sanitized_mask,
@@ -725,6 +727,11 @@ class MultiModelInferenceEngine:
             intensity_stats,
         )
         quality["component_cleanup"] = component_cleanup
+        advanced_metrics = advanced_shape_metrics(
+            mask,
+            surface_area_cm2=surface_area_cm2,
+            mesh_volume_cm3=mesh_volume_cm3,
+        )
 
         model = self.models[target]
 
@@ -940,6 +947,10 @@ class MultiModelInferenceEngine:
             },
 
             "measurement_quality": quality,
+
+            "advanced_metrics": advanced_metrics,
+
+            "input_notes": loaded.input_notes or [],
 
             "model_provenance": (
                 provenance
