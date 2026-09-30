@@ -103,6 +103,7 @@ export type BackendHealth = {
   device: string;
   model_loaded: boolean;
   model_error: string | null;
+  demo_enabled: boolean;
   models: Record<string, ModelInfo>;
 };
 
