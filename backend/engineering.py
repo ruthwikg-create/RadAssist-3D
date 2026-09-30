@@ -77,7 +77,7 @@ def build_dicom_sr_result(result: dict[str, Any]) -> dict[str, Any]:
         "compatibility": DICOM_SR_COMPATIBILITY,
         "schema_version": SCHEMA_VERSION,
         "modality": "SR",
-        "measurement_groups": [{"tracking_identifier": f"RadAssist:{result.get('request_id')}", "finding": result.get("target"), "measurements": build_structured_measurements(result)["measurements"], "qa": {"status": quality.get("status"), "flags": quality.get("flags", [])}}],
+        "measurement_groups": [{"tracking_identifier": f"RadAssist:{result.get('request_id')}", "finding": result.get("target"), "measurements": build_structured_measurements(result=result)["measurements"], "qa": {"status": quality.get("status"), "flags": quality.get("flags", [])}}],
         "status": "ARCHITECTURE_ONLY_NOT_DICOM_FILE",
     }
 
@@ -89,7 +89,7 @@ def build_provenance(result: dict[str, Any]) -> dict[str, Any]:
         "source": {"type": result.get("source_type"), "modality": result.get("modality"), "dimensions": result.get("original_dimensions"), "spacing_mm": result.get("original_spacing_mm")},
         "model": result.get("model_provenance", {}),
         "measurement": result.get("measurement_quality", {}),
-        "structured_measurements": build_structured_measurements(result),
+        "structured_measurements": build_structured_measurements(result=result),
         "dicom_seg": build_dicom_seg_result(result),
         "dicom_sr": build_dicom_sr_result(result),
     }
