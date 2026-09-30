@@ -8,6 +8,7 @@ import {
   Eye,
   EyeOff,
   Grid3X3,
+  Camera,
 } from "lucide-react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -251,6 +252,12 @@ export default function ThreeDMeshViewer({
     useState(false);
   const [clipPosition, setClipPosition] =
     useState(0);
+  const [displayMode, setDisplayMode] =
+    useState<"surface" | "slice">("surface");
+  const [clipAxis, setClipAxis] =
+    useState<"x" | "y" | "z">("x");
+  const [captureStatus, setCaptureStatus] =
+    useState<string | null>(null);
   const clippingPlaneRef =
     useRef(new THREE.Plane(new THREE.Vector3(1, 0, 0), 0));
 
@@ -307,6 +314,7 @@ export default function ThreeDMeshViewer({
           antialias: true,
           alpha: false,
           powerPreference: "high-performance",
+          preserveDrawingBuffer: true,
         });
     } catch {
       setError(
@@ -320,7 +328,7 @@ export default function ThreeDMeshViewer({
     renderer.setPixelRatio(
       Math.min(
         window.devicePixelRatio || 1,
-        2,
+        3,
       ),
     );
 
@@ -332,7 +340,7 @@ export default function ThreeDMeshViewer({
     renderer.outputColorSpace =
       THREE.SRGBColorSpace;
     renderer.localClippingEnabled = true;
-    renderer.clippingPlanes = clipEnabled ? [clippingPlaneRef.current] : [];
+    renderer.clippingPlanes = clipEnabled || displayMode === "slice" ? [clippingPlaneRef.current] : [];
 
     const width =
       Math.max(
@@ -558,6 +566,8 @@ export default function ThreeDMeshViewer({
       );
 
     camera.lookAt(0, 0, 0);
+    const axisIndex = clipAxis === "x" ? 0 : clipAxis === "y" ? 1 : 2;
+    clippingPlaneRef.current.normal.set(axisIndex === 0 ? 1 : 0, axisIndex === 1 ? 1 : 0, axisIndex === 2 ? 1 : 0);
     clippingPlaneRef.current.constant = clipPosition * maxDimension;
 
     controls.target.set(
@@ -710,16 +720,22 @@ export default function ThreeDMeshViewer({
   }, [surfaces]);
 
   useEffect(() => {
-    clippingPlaneRef.current.constant =
-      clipPosition * Math.max(
-        1,
-        groupRef.current?.children.reduce((max, child) => {
-          const box = new THREE.Box3().setFromObject(child);
-          return Math.max(max, box.getSize(new THREE.Vector3()).length());
-        }, 1) ?? 1,
-      );
+    const scale = Math.max(
+      1,
+      groupRef.current?.children.reduce((max, child) => {
+        const box = new THREE.Box3().setFromObject(child);
+        return Math.max(max, box.getSize(new THREE.Vector3()).length());
+      }, 1) ?? 1,
+    );
+    const axisIndex = clipAxis === "x" ? 0 : clipAxis === "y" ? 1 : 2;
+    clippingPlaneRef.current.normal.set(
+      axisIndex === 0 ? 1 : 0,
+      axisIndex === 1 ? 1 : 0,
+      axisIndex === 2 ? 1 : 0,
+    );
+    clippingPlaneRef.current.constant = clipPosition * scale;
     if (rendererRef.current) {
-      rendererRef.current.clippingPlanes = clipEnabled
+      rendererRef.current.clippingPlanes = (clipEnabled || displayMode === "slice")
         ? [clippingPlaneRef.current]
         : [];
     }
@@ -829,6 +845,25 @@ export default function ThreeDMeshViewer({
       }
     };
 
+
+  const capture3dPng = () => {
+    const renderer = rendererRef.current;
+    if (!renderer) {
+      setCaptureStatus("3D renderer is not ready.");
+      return;
+    }
+    try {
+      const link = document.createElement("a");
+      link.href = renderer.domElement.toDataURL("image/png");
+      link.download = `radassist-${target ?? "study"}-3d-1790812339248.png`;
+      link.click();
+      setCaptureStatus("High-resolution 3D PNG exported");
+      window.setTimeout(() => setCaptureStatus(null), 1800);
+    } catch (caught) {
+      setCaptureStatus(caught instanceof Error ? caught.message : "3D PNG export failed.");
+    }
+  };
+
   return (
     <div className="flex min-h-[520px] flex-col bg-[#07131a] text-slate-200">
       <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
@@ -843,6 +878,20 @@ export default function ThreeDMeshViewer({
         </div>
 
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => { setDisplayMode("surface"); setClipEnabled(false); }}
+            className={`rounded-md border px-2 py-1 text-[9px] ${displayMode === "surface" ? "border-cyan-400/40 text-cyan-300" : "border-white/10 text-slate-400"}`}
+          >
+            SURFACE
+          </button>
+          <button
+            type="button"
+            onClick={() => { setDisplayMode("slice"); setClipEnabled(true); }}
+            className={`rounded-md border px-2 py-1 text-[9px] ${displayMode === "slice" ? "border-cyan-400/40 text-cyan-300" : "border-white/10 text-slate-400"}`}
+          >
+            SLICE / CLIP
+          </button>
           <button
             type="button"
             onClick={() =>
@@ -891,11 +940,20 @@ export default function ThreeDMeshViewer({
 
           <button
             type="button"
-            onClick={() => setClipEnabled((value) => !value)}
+            onClick={() => { setClipEnabled((value) => !value); setDisplayMode("slice"); }}
             className={`rounded-md border px-2 py-1 text-[9px] ${clipEnabled ? "border-cyan-400/40 text-cyan-300" : "border-white/10 text-slate-400"}`}
             title="Toggle clipping plane"
           >
             Clip
+          </button>
+
+          <button
+            type="button"
+            onClick={capture3dPng}
+            className="rounded-md border border-white/10 p-1.5 text-cyan-300"
+            title="Export high-resolution 3D PNG"
+          >
+            <Camera size={13} />
           </button>
 
           <button
@@ -947,6 +1005,18 @@ export default function ThreeDMeshViewer({
               <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.12em] text-slate-500">
                 <span>Clipping plane</span>
                 <span className="font-mono text-cyan-200">{clipPosition.toFixed(2)}</span>
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-1">
+                {(["x","y","z"] as const).map((axis) => (
+                  <button
+                    key={axis}
+                    type="button"
+                    onClick={() => setClipAxis(axis)}
+                    className={`rounded-md border px-2 py-1 text-[8px] uppercase ${clipAxis === axis ? "border-cyan-400/40 text-cyan-300" : "border-white/10 text-slate-500"}`}
+                  >
+                    {axis === "x" ? "Sagittal / X" : axis === "y" ? "Coronal / Y" : "Axial / Z"}
+                  </button>
+                ))}
               </div>
               <input
                 aria-label="3D clipping plane position"
@@ -1096,6 +1166,11 @@ export default function ThreeDMeshViewer({
           </div>
         </aside>
       </div>
+      {captureStatus ? (
+        <div className="border-t border-cyan-300/10 bg-cyan-300/[0.04] px-3 py-2 text-[9px] text-cyan-200">
+          {captureStatus}
+        </div>
+      ) : null}
     </div>
   );
 }
