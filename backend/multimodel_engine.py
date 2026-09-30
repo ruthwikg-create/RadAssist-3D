@@ -17,6 +17,7 @@ try:
     from .pipeline import (
         create_mesh,
         _mesh_geometry_metrics,
+        MeshData,
         load_medical_volume,
         write_sanitized_mask,
         write_sanitized_nifti,
@@ -27,6 +28,7 @@ except ImportError:
     from pipeline import (
         create_mesh,
         _mesh_geometry_metrics,
+        MeshData,
         load_medical_volume,
         write_sanitized_mask,
         write_sanitized_nifti,
