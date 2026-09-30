@@ -713,14 +713,8 @@ class MultiModelInferenceEngine:
             / 1000.0
         )
 
-        surface_area_cm2, mesh_volume_cm3 = _mesh_geometry_metrics(
-            type("_Mesh", (), {
-                "vertices": mesh_data.vertices if "mesh_data" in locals() else [],
-                "faces": mesh_data.faces if "mesh_data" in locals() else [],
-                "vertex_count": mesh_data.vertex_count if "mesh_data" in locals() else 0,
-                "face_count": mesh_data.face_count if "mesh_data" in locals() else 0,
-            })()
-        )
+        metric_mesh = mesh_data if "mesh_data" in locals() else MeshData([], [], 0, 0)
+        surface_area_cm2, mesh_volume_cm3 = _mesh_geometry_metrics(metric_mesh)
         intensity_stats = _source_intensity_statistics(image, mask)
         quality = self._measurement_quality(
             image,
