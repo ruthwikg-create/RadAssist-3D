@@ -14,6 +14,7 @@ try:
         MeshData,
         _mesh_geometry_metrics,
         _physical_mesh_from_mask,
+        create_mesh,
         advanced_shape_metrics,
         load_medical_volume,
     )
@@ -25,6 +26,7 @@ except ModuleNotFoundError:
         MeshData,
         _mesh_geometry_metrics,
         _physical_mesh_from_mask,
+        create_mesh,
         advanced_shape_metrics,
         load_medical_volume,
     )
@@ -90,6 +92,20 @@ class WorkstationRegressionTests(unittest.TestCase):
             np.asarray([4.0, 6.0, 8.0]),
             atol=0.01,
         )
+
+    def test_create_mesh_never_returns_empty_for_nonempty_mask(self) -> None:
+        array = np.zeros((32, 32, 32), dtype=np.uint8)
+        array[8:24, 8:24, 8:24] = 1
+        image = sitk.GetImageFromArray(array)
+        image.SetSpacing((0.5, 0.5, 0.5))
+
+        with patch("backend.pipeline.MESH_MAX_VERTICES", 10):
+            with patch("backend.pipeline.MESH_MAX_STEP_SIZE", 16):
+                mesh, step = create_mesh(image)
+
+        self.assertGreater(mesh.vertex_count, 0)
+        self.assertGreater(mesh.face_count, 0)
+        self.assertGreaterEqual(step, 1)
 
     def test_advanced_shape_metrics_are_physical_and_finite(self) -> None:
         array = np.zeros((10, 10, 10), dtype=np.uint8)
