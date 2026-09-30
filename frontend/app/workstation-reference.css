@@ -1157,3 +1157,5 @@ textarea {
     transition: none !important;
   }
 }
+
+.ra-telemetry-hidden .ra-telemetry-bar { display: none; }
