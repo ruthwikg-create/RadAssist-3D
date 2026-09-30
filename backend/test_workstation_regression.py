@@ -125,7 +125,7 @@ class WorkstationRegressionTests(unittest.TestCase):
                 loaded = load_medical_volume([path], root / "extract")
 
             self.assertEqual(loaded.image.GetDimension(), 3)
-            self.assertEqual(loaded.image.GetSize(), (6, 6, 2))
+            self.assertEqual(loaded.image.GetSize(), (6, 6, 6))
             self.assertTrue(loaded.input_notes)
             self.assertIn("frame 1 of 2", loaded.input_notes[0])
 
