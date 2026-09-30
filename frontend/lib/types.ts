@@ -144,6 +144,12 @@ export type CaseResult = {
   uncertainty_status?: Record<string, unknown>;
   input_validation?: Record<string, unknown>;
   input_manifest?: Array<Record<string, unknown>>;
+  dicom_export?: {
+    status: "GENERATED" | "NOT_AVAILABLE" | "FAILED";
+    reason?: string;
+    segmentation?: Record<string, unknown>;
+    structured_report?: Record<string, unknown>;
+  };
 
   persisted?: boolean;
 };
