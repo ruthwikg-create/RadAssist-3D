@@ -1124,6 +1124,11 @@ export default function ScanWorkspace() {
                     setFiles
                   }
                   disabled={working}
+                  modalityLabel={
+                    selectedModel.modality === "MR"
+                      ? "MRI"
+                      : "CT"
+                  }
                 />
               </div>
 
