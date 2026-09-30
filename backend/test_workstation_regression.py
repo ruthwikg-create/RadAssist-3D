@@ -3,18 +3,31 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import SimpleITK as sitk
 
 try:
     from backend.multimodel_engine import _largest_component_per_label, _smooth_mesh
-    from backend.pipeline import MeshData, _mesh_geometry_metrics, _physical_mesh_from_mask
+    from backend.pipeline import (
+        MeshData,
+        _mesh_geometry_metrics,
+        _physical_mesh_from_mask,
+        advanced_shape_metrics,
+        load_medical_volume,
+    )
     from backend.engineering import build_input_manifest
     from backend.case_store import case_dir
 except ModuleNotFoundError:
     from multimodel_engine import _largest_component_per_label, _smooth_mesh
-    from pipeline import MeshData, _mesh_geometry_metrics, _physical_mesh_from_mask
+    from pipeline import (
+        MeshData,
+        _mesh_geometry_metrics,
+        _physical_mesh_from_mask,
+        advanced_shape_metrics,
+        load_medical_volume,
+    )
     from engineering import build_input_manifest
     from case_store import case_dir
 
@@ -77,6 +90,44 @@ class WorkstationRegressionTests(unittest.TestCase):
             np.asarray([4.0, 6.0, 8.0]),
             atol=0.01,
         )
+
+    def test_advanced_shape_metrics_are_physical_and_finite(self) -> None:
+        array = np.zeros((10, 10, 10), dtype=np.uint8)
+        array[2:6, 2:6, 2:6] = 1
+        image = sitk.GetImageFromArray(array)
+        image.SetSpacing((2.0, 3.0, 4.0))
+
+        metrics = advanced_shape_metrics(image, surface_area_cm2=1.0, mesh_volume_cm3=1.0)
+
+        self.assertEqual(metrics["foreground_voxels"], 64)
+        np.testing.assert_allclose(
+            metrics["bounding_box_mm"],
+            [8.0, 12.0, 16.0],
+            atol=0.001,
+        )
+        self.assertTrue(all(np.isfinite(metrics["principal_spread_mm"])))
+        self.assertGreater(metrics["sphericity"], 0)
+        self.assertGreater(metrics["compactness"], 0)
+
+    def test_four_dimensional_nifti_selects_declared_frame(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            volume = np.zeros((2, 6, 6, 6), dtype=np.float32)
+            volume[0, 2:4, 2:4, 2:4] = 10
+            volume[1, 1:5, 1:5, 1:5] = 20
+
+            # NIfTI is written with [X,Y,Z,T] through SimpleITK's 4D array convention.
+            image = sitk.GetImageFromArray(volume, isVector=False)
+            path = root / "four_dimensional.nii.gz"
+            sitk.WriteImage(image, str(path))
+
+            with patch.dict("os.environ", {"RADASSIST_NIFTI_FRAME_INDEX": "1"}):
+                loaded = load_medical_volume([path], root / "extract")
+
+            self.assertEqual(loaded.image.GetDimension(), 3)
+            self.assertEqual(loaded.image.GetSize(), (6, 6, 2))
+            self.assertTrue(loaded.input_notes)
+            self.assertIn("frame 1 of 2", loaded.input_notes[0])
 
     def test_input_manifest_hashes_without_source_filename(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
