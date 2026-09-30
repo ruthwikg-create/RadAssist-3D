@@ -26,6 +26,7 @@ import CornerstoneMPRViewer from "./CornerstoneMPRViewer";
 import DemoMPRViewer from "./DemoMPRViewer";
 import Three3DMeshViewer from "./Three3DMeshViewer";
 import MetricsPanel from "./MetricsPanel";
+import AdvancedAnalyticsPanel from "./AdvancedAnalyticsPanel";
 import ViewerErrorBoundary from "./ViewerErrorBoundary";
 
 import type {
@@ -1807,6 +1808,9 @@ export default function ScanWorkspace() {
                     <MetricsPanel
                       result={result}
                     />
+                    <div className="mt-3">
+                      <AdvancedAnalyticsPanel result={result} />
+                    </div>
                   </div>
                 </aside>
               </section>
