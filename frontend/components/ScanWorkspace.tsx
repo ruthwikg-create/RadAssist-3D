@@ -39,6 +39,8 @@ import {
   API_BASE_URL,
   caseBundleUrl,
   caseReportUrl,
+  caseDicomSegUrl,
+  caseDicomSrUrl,
   caseMaskUrl,
   createDemoCase,
   deleteCase,
@@ -1456,6 +1458,40 @@ export default function ScanWorkspace() {
                       </button>
 
                       <button
+                        type="button"
+                        disabled={result.persisted === false || result.dicom_export?.status !== "GENERATED"}
+                        className="ra-icon-btn disabled:cursor-not-allowed disabled:opacity-30"
+                        onClick={() =>
+                          void downloadArtifact(
+                            caseDicomSegUrl(result.request_id),
+                            "radassist_segmentation.dcm",
+                            setError,
+                          )
+                        }
+                        aria-label="Download DICOM SEG"
+                        title="Download DICOM SEG"
+                      >
+                        <FileDown size={14} />
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={result.persisted === false || result.dicom_export?.status !== "GENERATED"}
+                        className="ra-icon-btn disabled:cursor-not-allowed disabled:opacity-30"
+                        onClick={() =>
+                          void downloadArtifact(
+                            caseDicomSrUrl(result.request_id),
+                            "radassist_measurements_sr.dcm",
+                            setError,
+                          )
+                        }
+                        aria-label="Download DICOM SR"
+                        title="Download DICOM SR"
+                      >
+                        <FileDown size={14} />
+                      </button>
+
+                                            <button
                         type="button"
                         disabled={result.persisted === false}
                         className="ra-icon-btn disabled:cursor-not-allowed disabled:opacity-30"
