@@ -104,6 +104,14 @@ export default function ClinicalResearchConsole({
   const [syncLocked, setSyncLocked] = useState(true);
   const [layoutMode, setLayoutMode] = useState<"stack" | "2x2">("stack");
   const [showExportDock, setShowExportDock] = useState(true);
+  const [section, setSection] = useState<"dashboard" | "studies" | "import" | "mpr" | "surface3d" | "metrics" | "qa" | "research" | "export">("research");
+
+  const goToSection = (next: typeof section) => {
+    setSection(next);
+    if (next === "mpr") onModeChange("mpr");
+    else if (next === "surface3d") onModeChange("ai");
+    else if (next === "research" || next === "dashboard" || next === "metrics" || next === "qa" || next === "export") onModeChange("research");
+  };
   const hash = model?.checkpoint_sha256 ? model.checkpoint_sha256.slice(0, 12) : "—";
   const device = backend?.device ?? "offline";
   const loaded = backend ? Object.values(backend.models ?? {}).filter((x) => x.loaded).length : 0;
@@ -186,25 +194,39 @@ export default function ClinicalResearchConsole({
         <div>
           <div className="cw-sidebar-label">WORKSTATION MODES</div>
           {[
-            ["Dashboard", Terminal, () => onModeChange("research")],
-            ["Studies", FolderOpen, () => history[0] ? onOpenHistory(history[0]) : onSetError("No stored studies are available.")],
-            ["Import DICOM/NIfTI", UploadCloud, onImport],
-            ["MPR Viewer", Grid2X2, () => onModeChange("mpr")],
-            ["3D Reconstruction", Box, () => onModeChange("ai")],
-            ["Quantification", BarChart3, () => onModeChange("research")],
-            ["QA & Validation", ShieldCheck, () => onModeChange("research")],
-            ["Research Console", Terminal, () => onModeChange("research")],
-            ["Research Export", Archive, () => document.getElementById("cw-export")?.scrollIntoView({ behavior: "smooth" })],
-          ].map(([label, Icon, handler]) => {
-            const active =
-              (label === "MPR Viewer" && mode === "mpr") ||
-              (label === "3D Reconstruction" && mode === "ai") ||
-              (label === "Research Console" && mode === "research");
+            ["Dashboard", Terminal, "dashboard", () => goToSection("dashboard")],
+            ["Studies", FolderOpen, "studies", () => goToSection("studies")],
+            ["Import DICOM/NIfTI", UploadCloud, "import", onImport],
+            ["MPR Viewer", Grid2X2, "mpr", () => goToSection("mpr")],
+            ["3D Reconstruction", Box, "surface3d", () => goToSection("surface3d")],
+            ["Quantification", BarChart3, "metrics", () => goToSection("metrics")],
+            ["QA & Validation", ShieldCheck, "qa", () => goToSection("qa")],
+            ["Research Console", Terminal, "research", () => goToSection("research")],
+            ["Research Export", Archive, "export", () => goToSection("export")],
+          ].map(([label, Icon, key, handler]) => {
+            const active = section === key;
             const C = Icon as typeof Terminal;
-            return <button key={String(label)} className={`cw-side-item ${active ? "active" : ""}`} onClick={handler as () => void}><C size={16} /><span>{String(label)}</span></button>;
+            return (
+              <button
+                key={String(label)}
+                type="button"
+                className={`cw-side-item ${active ? "active" : ""}`}
+                onClick={handler as () => void}
+              >
+                <C size={16} />
+                <span>{String(label)}</span>
+              </button>
+            );
           })}
         </div>
-        <button className="cw-side-item" onClick={onSettings}><Settings size={16} /><span>Settings</span></button>
+        <button
+          type="button"
+          className="cw-side-item"
+          onClick={() => setShowSettings((value) => !value)}
+        >
+          <Settings size={16} />
+          <span>Settings</span>
+        </button>
       </aside>
 
       <main className="cw-main">
@@ -212,9 +234,138 @@ export default function ClinicalResearchConsole({
           <Card className="cw-empty">
             <div className="cw-empty-title">Research workstation</div>
             <p>Import a CT/MRI DICOM study or NIfTI volume to activate MPR, AI segmentation, quantitative QA, provenance and research export.</p>
-            <button className="cw-primary" onClick={onImport}><UploadCloud size={15} /> Import DICOM/NIfTI</button><div id="cw-import-zone" className="cw-import-zone">{importContent}</div>
+            <button className="cw-primary" type="button" onClick={onImport}><UploadCloud size={15} /> Import DICOM/NIfTI</button>
+            <div id="cw-import-zone" className="cw-import-zone">{importContent}</div>
           </Card>
-        ) : mode === "research" ? (
+        ) : section === "dashboard" ? (
+          <div className="cw-section-page">
+            <div className="cw-console-head">
+              <div>
+                <div className="cw-console-kicker">RADASSIST 3D / WORKSTATION DASHBOARD</div>
+                <h1>IMAGING WORKSTATION OVERVIEW</h1>
+                <p>Use the left rail to move directly between the active study, MPR, 3D reconstruction, quantitative analysis, QA, and research export.</p>
+              </div>
+              <div className="cw-toolbar">
+                <button type="button" onClick={() => goToSection("mpr")}><Grid2X2 size={13} /> Open MPR</button>
+                <button type="button" className="primary" onClick={onImport}><UploadCloud size={13} /> Import Study</button>
+              </div>
+            </div>
+            <div className="cw-dashboard-grid">
+              <Card>
+                <CardTitle icon={<Database size={16} />} title="Current Study" meta="ACTIVE CASE" />
+                <div className="cw-dashboard-value">{result.target.toUpperCase()} · {result.modality}</div>
+                <div className="cw-dashboard-meta">{result.source_type} · {dimensions} · {spacing} mm</div>
+                <div className="cw-dashboard-actions">
+                  <button type="button" onClick={() => goToSection("mpr")}>MPR Viewer</button>
+                  <button type="button" onClick={() => goToSection("surface3d")}>3D Reconstruction</button>
+                </div>
+              </Card>
+              <Card>
+                <CardTitle icon={<Microscope size={16} />} title="AI & Processing" meta="RUNTIME" />
+                <div className="cw-dashboard-value">{loaded}/3 models ready</div>
+                <div className="cw-dashboard-meta">Device: {device.toUpperCase()} · Processing: {result.processing_seconds.toFixed(2)} s</div>
+                <div className="cw-dashboard-actions">
+                  <button type="button" onClick={() => goToSection("metrics")}>Quantification</button>
+                  <button type="button" onClick={() => goToSection("qa")}>QA & Validation</button>
+                </div>
+              </Card>
+              <Card>
+                <CardTitle icon={<RefreshCcw size={16} />} title="Reproducibility" meta="PROVENANCE" />
+                <div className="cw-dashboard-value">{result.provenance_record ? "TRACEABLE" : "REVIEW"}</div>
+                <div className="cw-dashboard-meta">Request: {result.request_id.slice(0, 16)} · Schema: {String(result.provenance_record?.schema_version ?? "—")}</div>
+                <div className="cw-dashboard-actions">
+                  <button type="button" onClick={onRefreshCase}>Refresh Case</button>
+                  <button type="button" onClick={() => goToSection("export")}>Research Export</button>
+                </div>
+              </Card>
+            </div>
+          </div>
+        ) : section === "studies" ? (
+          <div className="cw-section-page">
+            <div className="cw-console-head">
+              <div>
+                <div className="cw-console-kicker">STUDY MANAGER / LOCAL CASE HISTORY</div>
+                <h1>STUDIES</h1>
+                <p>Reopen a stored research case without rerunning inference.</p>
+              </div>
+              <div className="cw-toolbar"><button type="button" className="primary" onClick={onImport}><UploadCloud size={13} /> Import Study</button></div>
+            </div>
+            <Card>
+              <CardTitle icon={<FolderOpen size={16} />} title="Stored Studies" meta={`${history.length} CASES`} />
+              {history.length ? (
+                <div className="cw-study-list">
+                  {history.map((item) => (
+                    <button key={item.case_id} type="button" className={`cw-study-row ${item.case_id === result.request_id ? "active" : ""}`} onClick={() => onOpenHistory(item)}>
+                      <span><b>{item.target.toUpperCase()} · {item.modality}</b><small>{item.source_type} · {formatDate(item.stored_at)}</small></span>
+                      <strong>{n(item.volume_cm3)} cm³</strong>
+                      <em>{item.is_demo ? "DEMO" : "STORED"}</em>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="cw-inline-empty">No stored studies are available.</div>
+              )}
+            </Card>
+          </div>
+        ) : section === "import" ? (
+          <div className="cw-section-page">
+            <div className="cw-console-head">
+              <div>
+                <div className="cw-console-kicker">INGEST / DICOM + NIFTI</div>
+                <h1>IMPORT STUDY</h1>
+                <p>Select the target anatomy, load a DICOM study or NIfTI volume, then run the existing inference pipeline.</p>
+              </div>
+            </div>
+            <Card className="cw-import-page">
+              <CardTitle icon={<UploadCloud size={16} />} title="Study Import" meta="NO BACKEND CHANGES" />
+              {importContent}
+            </Card>
+          </div>
+        ) : section === "mpr" ? (
+          <div className="cw-mode-panel">
+            <div className="cw-mode-title">CLINICAL MPR &amp; 3D</div>
+            <p>Existing RadAssist imaging controls are preserved below.</p>
+            <div id="cw-viewer-slot" className="cw-viewer-filter cw-viewer-only-mpr">{viewerContent}</div>
+          </div>
+        ) : section === "surface3d" ? (
+          <div className="cw-mode-panel">
+            <div className="cw-mode-title">3D RECONSTRUCTION</div>
+            <p>Existing Three.js reconstruction and mesh diagnostics are preserved below.</p>
+            <div id="cw-viewer-slot" className="cw-viewer-filter cw-viewer-only-3d">{viewerContent}</div>
+          </div>
+        ) : section === "metrics" ? (
+          <div className="cw-mode-panel">
+            <div className="cw-mode-title">QUANTIFICATION</div>
+            <p>Existing quantitative measurements and advanced analytics are shown without changing stored results.</p>
+            <div id="cw-viewer-slot" className="cw-viewer-filter cw-viewer-only-metrics">{viewerContent}</div>
+          </div>
+        ) : section === "qa" ? (
+          <div className="cw-mode-panel">
+            <div className="cw-mode-title">QA &amp; VALIDATION</div>
+            <p>Research QA gates, topology diagnostics, provenance and mesh agreement are shown in the research console.</p>
+            <div className="cw-qa-preview">
+              <Card>
+                <CardTitle icon={<ShieldCheck size={16} />} title="QA Validation Matrix" meta="CURRENT CASE" />
+                <div className="cw-qa-list">
+                  {qa.map(([label, value]) => <div key={label}><span>{statusTone(value) === "good" ? <CheckCircle2 size={14} /> : <XCircle size={14} />} {label}</span><b className={statusTone(value)}>{value}</b></div>)}
+                </div>
+                <div className="cw-dashboard-actions">
+                  <button type="button" onClick={() => goToSection("research")}>Open Research Console</button>
+                  <button type="button" onClick={onRefreshCase}>Refresh Stored QA</button>
+                </div>
+              </Card>
+              <Card>
+                <CardTitle icon={<Layers3 size={16} />} title="Topology Diagnostics" meta="SEGMENTATION QA" />
+                <div className="cw-topology">
+                  <span>TOPOLOGY DIAGNOSTIC SUB-METRICS</span>
+                  <div><b>Components:</b> {quality?.connected_components ?? "—"} <b>Largest:</b> {n(quality?.largest_component_fraction_pct, 1)}%</div>
+                  <div><b>Boundary:</b> {quality?.touches_volume_boundary ? "Yes (Review)" : "No"} <b>Mask fraction:</b> {n(quality?.mask_fraction_pct, 1)}%</div>
+                  <div><b>Mesh volume:</b> {n(quality?.mesh_volume_cm3)} cm³ <b>Labelmap:</b> {n(result.volume_cm3)} cm³</div>
+                </div>
+              </Card>
+            </div>
+          </div>
+        ) : section === "research" ? (
           <>
             <div className="cw-console-head">
               <div>
@@ -223,9 +374,9 @@ export default function ClinicalResearchConsole({
                 <p>Quantitative morphology, mesh agreement, source intensity distributions, verification gates, and reproducibility provenance.</p>
               </div>
               <div className="cw-toolbar">
-                <button onClick={onRefreshCase}><RefreshCcw size={13} /> Re-validate QA Gates</button>
-                <button onClick={() => onDownload(`/api/v1/cases/${result.request_id}/report`, `radassist-${result.request_id}-report.json`)}><FileDown size={13} /> Generate Report</button>
-                <button className="primary" onClick={() => onDownload(`/api/v1/cases/${result.request_id}/bundle`, `radassist-${result.request_id}-research.zip`)}><Archive size={13} /> Export Research Bundle</button>
+                <button type="button" onClick={onRefreshCase}><RefreshCcw size={13} /> Re-validate QA Gates</button>
+                <button type="button" onClick={() => onDownload(`/api/v1/cases/${result.request_id}/report`, `radassist-${result.request_id}-report.json`)}><FileDown size={13} /> Generate Report</button>
+                <button type="button" className="primary" onClick={() => onDownload(`/api/v1/cases/${result.request_id}/bundle`, `radassist-${result.request_id}-research.zip`)}><Archive size={13} /> Export Research Bundle</button>
               </div>
             </div>
 
@@ -320,20 +471,33 @@ export default function ClinicalResearchConsole({
               <div id="cw-export" />
               <CardTitle icon={<Archive size={16} />} title="Clinical Export & Scientific Interoperability Dock" meta="DICOM PS3.3 / TID 1500 / NIFTI-1 / STL" />
               <div className="cw-export-grid">
-                <button onClick={() => onDownload(`/api/v1/cases/${result.request_id}/report`, `radassist-${result.request_id}-report.json`)}><FileDown size={22} /><b>Structured Clinical Report</b><span>Source-derived report, QA snapshot and provenance.</span><strong>Export Report</strong></button>
-                <button disabled={result.dicom_export?.status !== "GENERATED"} onClick={() => onDownload(`/api/v1/cases/${result.request_id}/dicom-seg`, "radassist-segmentation.dcm")}><Layers3 size={22} /><b>DICOM SEG Object</b><span>Generated when an authoritative DICOM source is available.</span><strong>Export .dcm</strong></button>
-                <button disabled={result.dicom_export?.status !== "GENERATED"} onClick={() => onDownload(`/api/v1/cases/${result.request_id}/dicom-sr`, "radassist-measurements-sr.dcm")}><FileDown size={22} /><b>DICOM SR (TID 1500)</b><span>Structured measurement report for research interoperability.</span><strong>Export TID 1500</strong></button>
-                <button onClick={() => onDownload(`/api/v1/cases/${result.request_id}/bundle`, `radassist-${result.request_id}-research.zip`)}><Download size={22} /><b>Full Research Bundle</b><span>JSON telemetry manifest + available case artifacts.</span><strong>Download .zip</strong></button>
+                <button type="button" onClick={() => onDownload(`/api/v1/cases/${result.request_id}/report`, `radassist-${result.request_id}-report.json`)}><FileDown size={22} /><b>Structured Clinical Report</b><span>Source-derived report, QA snapshot and provenance.</span><strong>Export Report</strong></button>
+                <button type="button" disabled={result.dicom_export?.status !== "GENERATED"} onClick={() => onDownload(`/api/v1/cases/${result.request_id}/dicom-seg`, "radassist-segmentation.dcm")}><Layers3 size={22} /><b>DICOM SEG Object</b><span>Generated when an authoritative DICOM source is available.</span><strong>Export .dcm</strong></button>
+                <button type="button" disabled={result.dicom_export?.status !== "GENERATED"} onClick={() => onDownload(`/api/v1/cases/${result.request_id}/dicom-sr`, "radassist-measurements-sr.dcm")}><FileDown size={22} /><b>DICOM SR (TID 1500)</b><span>Structured measurement report for research interoperability.</span><strong>Export TID 1500</strong></button>
+                <button type="button" onClick={() => onDownload(`/api/v1/cases/${result.request_id}/bundle`, `radassist-${result.request_id}-research.zip`)}><Download size={22} /><b>Full Research Bundle</b><span>JSON telemetry manifest + available case artifacts.</span><strong>Download .zip</strong></button>
               </div>
             </Card> : null}
           </>
-        ) : (
-          <div className="cw-mode-panel">
-            <div className="cw-mode-title">{mode === "mpr" ? "CLINICAL MPR & 3D" : "AI SEGMENTATION"}</div>
-            <p>Existing RadAssist imaging controls are preserved below. Use the workstation tabs to move between visualization and research QA.</p>
-            <div id="cw-viewer-slot">{viewerContent}</div>
+        ) : section === "export" ? (
+          <div className="cw-section-page">
+            <div className="cw-console-head">
+              <div>
+                <div className="cw-console-kicker">RESEARCH EXPORT / INTEROPERABILITY</div>
+                <h1>RESEARCH EXPORT</h1>
+                <p>Export the existing stored report, DICOM objects when available, and the complete research bundle.</p>
+              </div>
+            </div>
+            <Card className="cw-export">
+              <CardTitle icon={<Archive size={16} />} title="Clinical Export & Scientific Interoperability Dock" meta="SOURCE-DERIVED ARTIFACTS" />
+              <div className="cw-export-grid">
+                <button type="button" onClick={() => onDownload(`/api/v1/cases/${result.request_id}/report`, `radassist-${result.request_id}-report.json`)}><FileDown size={22} /><b>Structured Clinical Report</b><span>Source-derived report, QA snapshot and provenance.</span><strong>Export Report</strong></button>
+                <button type="button" disabled={result.dicom_export?.status !== "GENERATED"} onClick={() => onDownload(`/api/v1/cases/${result.request_id}/dicom-seg`, "radassist-segmentation.dcm")}><Layers3 size={22} /><b>DICOM SEG Object</b><span>Generated when an authoritative DICOM source is available.</span><strong>Export .dcm</strong></button>
+                <button type="button" disabled={result.dicom_export?.status !== "GENERATED"} onClick={() => onDownload(`/api/v1/cases/${result.request_id}/dicom-sr`, "radassist-measurements-sr.dcm")}><FileDown size={22} /><b>DICOM SR (TID 1500)</b><span>Structured measurement report for research interoperability.</span><strong>Export TID 1500</strong></button>
+                <button type="button" onClick={() => onDownload(`/api/v1/cases/${result.request_id}/bundle`, `radassist-${result.request_id}-research.zip`)}><Download size={22} /><b>Full Research Bundle</b><span>JSON telemetry manifest + available case artifacts.</span><strong>Download .zip</strong></button>
+              </div>
+            </Card>
           </div>
-        )}
+        ) : null}
       </main>
 
       <footer className="cw-footer">
