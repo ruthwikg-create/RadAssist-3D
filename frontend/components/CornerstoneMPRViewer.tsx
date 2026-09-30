@@ -265,7 +265,23 @@ export default function CornerstoneMPRViewer({
         await setVolumesForViewports(renderingEngine, [{ volumeId }], viewportIds, true);
         if (disposed) return;
 
-        const nextViewports = viewportIds.map((id) => renderingEngine.getViewport(id)).filter(Boolean) as CSTypes.IVolumeViewport[];
+        // Recompute the camera independently for every orientation. Without an
+        // orientation-aware reset, anisotropic NIfTI volumes can inherit a
+        // camera scale that leaves sagittal/coronal views clipped to a thin band.
+        const fittedViewports = viewportIds
+          .map((id) => renderingEngine.getViewport(id))
+          .filter(Boolean) as CSTypes.IVolumeViewport[];
+        fittedViewports.forEach((viewport) => {
+          try {
+            viewport.resetCamera({ resetPan: true, resetZoom: true, resetToCenter: true });
+            viewport.render();
+          } catch {
+            // The first render can race the volume actor setup; the resize observer
+            // below will perform another safe camera/render pass.
+          }
+        });
+
+        const nextViewports = fittedViewports;
         if (nextViewports.length !== 3) throw new Error("Cornerstone could not create all three orthographic viewports.");
         viewportsRef.current = nextViewports;
 
@@ -469,7 +485,7 @@ export default function CornerstoneMPRViewer({
             <button type="button" aria-label="Increase window level" onClick={() => setLevel((v) => v + 10)} className="ra-icon-btn"><Plus size={12} /></button>
           </div>
           <button type="button" title="Reset W/L" aria-label="Reset W/L" className="ra-icon-btn" onClick={() => { setWidth(400); setLevel(50); }}><RotateCcw size={13} /></button>
-          <button type="button" title="Fit images" aria-label="Fit images" className="ra-icon-btn" onClick={() => { viewportsRef.current.forEach((viewport) => { try { viewport.resetCamera(); viewport.render(); } catch {} }); }}><span className="text-[9px] font-bold">FIT</span></button>
+          <button type="button" title="Fit images" aria-label="Fit images" className="ra-icon-btn" onClick={() => { viewportsRef.current.forEach((viewport) => { try { viewport.resetCamera({ resetPan: true, resetZoom: true, resetToCenter: true }); viewport.render(); } catch {} }); }}><span className="text-[9px] font-bold">FIT</span></button>
           <button type="button" title="Toggle full screen" aria-label="Toggle full screen" className="ra-icon-btn" onClick={() => setFullscreen((v) => !v)}>{fullscreen ? <X size={14} /> : <Maximize2 size={14} />}</button>
         </div>
       </div>
