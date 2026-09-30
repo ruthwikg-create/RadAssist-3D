@@ -13,6 +13,7 @@ REQUIRED = [
     ROOT / "backend" / "pipeline.py",
     ROOT / "backend" / "case_store.py",
     ROOT / "backend" / "requirements.txt",
+    ROOT / "backend" / "test_workstation_regression.py",
     ROOT / "frontend" / "package.json",
     ROOT / "frontend" / "app" / "layout.tsx",
     ROOT / "frontend" / "app" / "globals.css",
@@ -38,6 +39,7 @@ if missing:
 
 py_files = sorted((ROOT / "backend").glob("*.py")) + [ROOT / "model_training" / "train_spleen_segresnet.py"]
 subprocess.run([sys.executable, "-m", "py_compile", *map(str, py_files)], check=True)
+subprocess.run([sys.executable, str(ROOT / "backend" / "test_workstation_regression.py")], cwd=ROOT, check=True)
 
 package = json.loads((ROOT / "frontend" / "package.json").read_text(encoding="utf-8"))
 assert package["scripts"]["build"] == "next build --webpack"
