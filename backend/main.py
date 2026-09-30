@@ -403,6 +403,7 @@ class HealthResponse(BaseModel):
     device: str
     model_loaded: bool
     model_error: str | None = None
+    demo_enabled: bool = False
 
     models: dict[
         str,
@@ -703,6 +704,10 @@ async def health(
             "model_error",
             None,
         ),
+        demo_enabled=os.getenv(
+            "RADASSIST_ALLOW_DEMO",
+            "false",
+        ).lower() == "true",
         models=models,
     )
 
