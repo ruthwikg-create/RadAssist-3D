@@ -832,6 +832,8 @@ async def get_case_bundle(
             directory / "preview.nii",
             directory
             / "segmentation_mask.nii.gz",
+            directory / "report.json",
+            directory / "audit.jsonl",
         ]
 
         existing = [
