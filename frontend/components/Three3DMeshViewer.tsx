@@ -681,7 +681,7 @@ export default function ThreeDMeshViewer({
       groupRef.current = null;
       objectsRef.current.clear();
     };
-  }, [surfaces, clipEnabled]);
+  }, [surfaces]);
 
   useEffect(() => {
     clippingPlaneRef.current.constant =
@@ -720,7 +720,7 @@ export default function ThreeDMeshViewer({
       object.material.wireframe =
         wireframe;
     }
-  }, [states, wireframe]);
+  }, [states, wireframe, clipPosition, clipEnabled]);
 
   useEffect(() => {
     const group = groupRef.current;
