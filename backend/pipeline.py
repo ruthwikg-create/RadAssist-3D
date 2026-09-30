@@ -364,6 +364,14 @@ def load_medical_volume(input_paths: list[Path], extraction_root: Path) -> Volum
                 "RadAssist models currently require a 3D spatial volume."
             )
 
+        if image.GetNumberOfComponentsPerPixel() > 1:
+            components = image.GetNumberOfComponentsPerPixel()
+            image = sitk.VectorIndexSelectionCast(image, 0)
+            input_notes.append(
+                f"Vector NIfTI reduced to component 0 of {components}; "
+                "the selected component is not independently verified as the intended acquisition."
+            )
+
         return VolumeData(
             image=image,
             source_type="NIFTI",
