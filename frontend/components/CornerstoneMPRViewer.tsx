@@ -22,6 +22,9 @@ import {
   ToolGroupManager,
   WindowLevelTool,
   ZoomTool,
+  CrosshairsTool,
+  LengthTool,
+  BidirectionalTool,
 } from "@cornerstonejs/tools";
 import type { Types as CSTypes } from "@cornerstonejs/core";
 import { Maximize2, Minus, Plus, RotateCcw, X } from "lucide-react";
@@ -41,6 +44,9 @@ async function initializeCornerstone() {
         addTool(WindowLevelTool);
         addTool(PanTool);
         addTool(ZoomTool);
+        addTool(CrosshairsTool);
+        addTool(LengthTool);
+        addTool(BidirectionalTool);
         toolsRegistered = true;
       }
     })().catch((error) => {
@@ -86,6 +92,7 @@ export default function CornerstoneMPRViewer({
   const volumeIdRef = useRef<string | null>(null);
   const viewportsRef = useRef<CSTypes.IVolumeViewport[]>([]);
   const toolGroupIdRef = useRef<string | null>(null);
+  const toolGroupRef = useRef<ReturnType<typeof ToolGroupManager.createToolGroup> | null>(null);
   const wheelCleanupRef = useRef<(() => void)[]>([]);
   const voiCleanupRef = useRef<(() => void)[]>([]);
   const syncingVoiRef = useRef(false);
@@ -96,6 +103,7 @@ export default function CornerstoneMPRViewer({
   const [sliceTotals, setSliceTotals] = useState([0, 0, 0]);
   const [fullscreen, setFullscreen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTool, setActiveTool] = useState<"wl" | "crosshair" | "length" | "bidirectional">("wl");
 
   useEffect(() => {
     // Keep this guard inside the effect so all hooks remain unconditional.
@@ -268,6 +276,9 @@ export default function CornerstoneMPRViewer({
         toolGroup.addTool(WindowLevelTool.toolName);
         toolGroup.addTool(PanTool.toolName);
         toolGroup.addTool(ZoomTool.toolName);
+        toolGroup.addTool(CrosshairsTool.toolName);
+        toolGroup.addTool(LengthTool.toolName);
+        toolGroup.addTool(BidirectionalTool.toolName);
 
         toolGroup.setToolActive(WindowLevelTool.toolName, {
           bindings: [{ mouseButton: ToolsEnums.MouseBindings.Primary }],
@@ -279,6 +290,7 @@ export default function CornerstoneMPRViewer({
           bindings: [{ mouseButton: ToolsEnums.MouseBindings.Secondary }],
         });
         toolGroupIdRef.current = toolGroupId;
+        toolGroupRef.current = toolGroup;
 
         setAllVoi(nextViewports, level, width);
         installWheelNavigation();
@@ -330,6 +342,7 @@ export default function CornerstoneMPRViewer({
           // Strict mode and hot reload may tear down twice.
         }
         toolGroupIdRef.current = null;
+      toolGroupRef.current = null;
       }
 
       try {
@@ -354,6 +367,32 @@ export default function CornerstoneMPRViewer({
       viewportsRef.current = [];
     };
   }, [caseId, volumeUrl, isDemo]);
+
+  useEffect(() => {
+    const toolGroup = toolGroupRef.current;
+    if (!toolGroup || isDemo) return;
+    const tools = [
+      WindowLevelTool.toolName,
+      CrosshairsTool.toolName,
+      LengthTool.toolName,
+      BidirectionalTool.toolName,
+    ];
+    tools.forEach((toolName) => {
+      try { toolGroup.setToolPassive(toolName); } catch {}
+    });
+    try {
+      const selected = activeTool === "wl"
+        ? WindowLevelTool.toolName
+        : activeTool === "crosshair"
+          ? CrosshairsTool.toolName
+          : activeTool === "length"
+            ? LengthTool.toolName
+            : BidirectionalTool.toolName;
+      toolGroup.setToolActive(selected, {
+        bindings: [{ mouseButton: ToolsEnums.MouseBindings.Primary }],
+      });
+    } catch {}
+  }, [activeTool, isDemo]);
 
   // NOTE: width/level are intentionally not dependencies of the heavy loader
   // effect above in production this would be split; this small follow-up hook
@@ -400,6 +439,23 @@ export default function CornerstoneMPRViewer({
           <div className="mt-1 text-[10px] text-slate-500">Axial · sagittal · coronal · one shared volume</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-black/20 p-1">
+            {([
+              ["wl", "W/L"],
+              ["crosshair", "Crosshair"],
+              ["length", "Length"],
+              ["bidirectional", "Bi-dir"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setActiveTool(value)}
+                className={`rounded-lg px-2 py-1 text-[8px] font-semibold ${activeTool === value ? "bg-cyan-300/10 text-cyan-200" : "text-slate-500"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-2 py-1.5">
             <span className="text-[10px] text-slate-500">W</span>
             <button type="button" aria-label="Decrease window width" onClick={() => setWidth((v) => Math.max(10, v - 25))} className="ra-icon-btn"><Minus size={12} /></button>
