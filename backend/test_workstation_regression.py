@@ -9,6 +9,7 @@ import numpy as np
 import SimpleITK as sitk
 
 try:
+    import backend.pipeline as pipeline_module
     from backend.multimodel_engine import _largest_component_per_label, _smooth_mesh
     from backend.pipeline import (
         MeshData,
@@ -21,6 +22,7 @@ try:
     from backend.engineering import build_input_manifest
     from backend.case_store import case_dir
 except ModuleNotFoundError:
+    import pipeline as pipeline_module
     from multimodel_engine import _largest_component_per_label, _smooth_mesh
     from pipeline import (
         MeshData,
@@ -99,8 +101,8 @@ class WorkstationRegressionTests(unittest.TestCase):
         image = sitk.GetImageFromArray(array)
         image.SetSpacing((0.5, 0.5, 0.5))
 
-        with patch("backend.pipeline.MESH_MAX_VERTICES", 10):
-            with patch("backend.pipeline.MESH_MAX_STEP_SIZE", 16):
+        with patch.object(pipeline_module, "MESH_MAX_VERTICES", 10):
+            with patch.object(pipeline_module, "MESH_MAX_STEP_SIZE", 16):
                 mesh, step = create_mesh(image)
 
         self.assertGreater(mesh.vertex_count, 0)
