@@ -30,8 +30,8 @@ function n(value: number | null | undefined, digits = 2) {
 
 function statusTone(value: string) {
   const v = value.toUpperCase();
-  if (v.includes("PASS") || v.includes("READY") || v.includes("GENERATED") || v.includes("VERIFIED") || v.includes("LOADED")) return "good";
-  if (v.includes("REVIEW") || v.includes("WARN") || v.includes("UNAVAILABLE")) return "warn";
+  if (v.includes("PASS") || v.includes("READY") || v.includes("GENERATED") || v.includes("VERIFIED") || v.includes("LOADED") || v.includes("VALID") || v.includes("CAPTURED")) return "good";
+  if (v.includes("REVIEW") || v.includes("WARN") || v.includes("UNAVAILABLE") || v.includes("NOT_AVAILABLE")) return "warn";
   return "bad";
 }
 
@@ -117,12 +117,16 @@ export default function ClinicalResearchConsole({
   const percentileValues = result
     ? [
         ["P05", result.hu_statistics.p05_hu],
-        ["P25", result.hu_statistics.p05_hu != null && result.hu_statistics.median_hu != null ? (result.hu_statistics.p05_hu + result.hu_statistics.median_hu) / 2 : null],
+        ["P25", null],
         ["MEDIAN", result.hu_statistics.median_hu],
-        ["P75", result.hu_statistics.median_hu != null && result.hu_statistics.p95_hu != null ? (result.hu_statistics.median_hu + result.hu_statistics.p95_hu) / 2 : null],
+        ["P75", null],
         ["P95", result.hu_statistics.p95_hu],
       ] as const
     : [];
+  const knownIntensity = percentileValues.map(([, value]) => value).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const intensityMin = knownIntensity.length ? Math.min(...knownIntensity) : 0;
+  const intensityMax = knownIntensity.length ? Math.max(...knownIntensity) : 1;
+  const intensitySpan = Math.max(1e-9, intensityMax - intensityMin);
 
   return (
     <div className="cw-shell">
@@ -201,12 +205,12 @@ export default function ClinicalResearchConsole({
 
             <div className="cw-kpi-grid">
               <Metric label="QUANTIFIED VOLUME" value={n(result.volume_cm3)} unit="cm³" code="VOI-01">
-                <div><span>Voxel: {n(quality?.labelmap_volume_cm3, 1)} cm³</span><span>Labelmap: {n(result.volume_cm3, 1)} cm³</span></div>
+                <div><span>Voxel: {n((quality?.voxel_volume_mm3 ?? 0) * result.voxel_count / 1000, 1)} cm³</span><span>Labelmap: {n(result.volume_cm3, 1)} cm³</span></div>
               </Metric>
               <Metric label="SURFACE AREA" value={n(quality?.surface_area_cm2)} unit="cm²" code="ISO-SURF">
                 <div><span>Faces: {result.mesh.face_count.toLocaleString()}</span><span>Vertices: {result.mesh.vertex_count.toLocaleString()}</span></div>
               </Metric>
-              <Metric label="EQUIVALENT DIAMETER" value={n(quality?.equivalent_diameter_mm, 2)} unit="cm" code="D-EQ">
+              <Metric label="EQUIVALENT DIAMETER" value={n(quality?.equivalent_diameter_mm == null ? null : quality.equivalent_diameter_mm / 10, 2)} unit="cm" code="D-EQ">
                 <div><span>Sphericity Index: <b>{n(advanced?.sphericity, 2)}</b></span></div>
               </Metric>
               <Metric label="MESH ↔ LABELMAP AGREEMENT" value={n(agreement, 2)} unit="ΔV" code={agreement == null ? "REVIEW" : "VERIFIED"}>
@@ -230,7 +234,7 @@ export default function ClinicalResearchConsole({
                   <div className="cw-graph-block">
                     <div className="cw-graph-head"><span className="dot blue" /> INTENSITY PROFILE <span>({result.modality === "MR" ? "Native MR signal distribution" : "Source intensity distribution"})</span><b>NON-CALIBRATED / SOURCE DOMAIN</b></div>
                     <div className="cw-percentile-chart">
-                      {percentileValues.map(([label, value]) => <div key={label} className={label === "MEDIAN" ? "median" : ""}><i style={{ height: value == null ? "8%" : `${20 + (Math.abs(value) % 80)}%` }} /><span>{label}</span></div>)}
+                      {percentileValues.map(([label, value]) => <div key={label} className={label === "MEDIAN" ? "median" : ""}><i style={{ height: value == null ? "8%" : `${20 + ((value - intensityMin) / intensitySpan) * 70}%` }} /><span>{label}</span></div>)}
                     </div>
                     <div className="cw-percentile-strip">
                       {percentileValues.map(([label, value]) => <div key={label}><span>{label}</span><b>{value == null ? "—" : value.toFixed(1)}</b></div>)}
