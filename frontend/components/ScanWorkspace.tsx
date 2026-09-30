@@ -452,16 +452,18 @@ export default function ScanWorkspace() {
   }, [result]);
 
   useEffect(() => {
-    void (async () => {
-      const refreshStatus = async () => {
-        try {
-          const health = await fetchHealth();
-          if (!disposed) setBackend(health);
-        } catch {
-          if (!disposed) setBackend(null);
-        }
-      };
+    let disposed = false;
 
+    const refreshStatus = async () => {
+      try {
+        const health = await fetchHealth();
+        if (!disposed) setBackend(health);
+      } catch {
+        if (!disposed) setBackend(null);
+      }
+    };
+
+    void (async () => {
       await refreshStatus();
 
       try {
@@ -470,17 +472,17 @@ export default function ScanWorkspace() {
       } catch {
         if (!disposed) setHistory([]);
       }
-
-      const timer = window.setInterval(
-        () => void refreshStatus(),
-        5000,
-      );
-
-      return () => {
-        disposed = true;
-        window.clearInterval(timer);
-      };
     })();
+
+    const timer = window.setInterval(
+      () => void refreshStatus(),
+      5000,
+    );
+
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
   }, []);
 
   function handleTargetChange(
