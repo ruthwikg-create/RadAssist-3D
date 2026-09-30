@@ -38,6 +38,7 @@ import type {
 import {
   API_BASE_URL,
   caseBundleUrl,
+  caseReportUrl,
   caseMaskUrl,
   createDemoCase,
   deleteCase,
@@ -1468,6 +1469,23 @@ export default function ScanWorkspace() {
                         <Download
                           size={14}
                         />
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={result.persisted === false}
+                        className="ra-icon-btn disabled:cursor-not-allowed disabled:opacity-30"
+                        onClick={() =>
+                          void downloadArtifact(
+                            caseReportUrl(result.request_id),
+                            "radassist_structured_report.json",
+                            setError,
+                          )
+                        }
+                        aria-label="Download structured report"
+                        title="Download structured report"
+                      >
+                        <FileDown size={14} />
                       </button>
 
                       <button
