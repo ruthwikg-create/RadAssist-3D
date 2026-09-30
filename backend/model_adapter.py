@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import os
+from typing import Any
 from pathlib import Path
 
 import numpy as np
 import torch
 from monai.inferers import SlidingWindowInferer
-from monai.networks.nets import UNet
+from monai.networks.nets import SegResNet, UNet
 
 
 DEFAULT_MODEL_PATH = (
@@ -25,7 +26,7 @@ MODEL_PATH = Path(
 
 
 class SpleenUNetAdapter:
-    """RadAssist adapter for the verified MONAI 3D UNet."""
+    """Checkpoint-aware spleen adapter supporting legacy UNet and metadata-bearing SegResNet checkpoints."""
 
     ARCHITECTURE = "MONAI UNet 3D"
     TASK = "Spleen segmentation from CT"
@@ -65,43 +66,62 @@ class SpleenUNetAdapter:
             else "cpu"
         )
 
-        self.model = UNet(
-            spatial_dims=3,
-            in_channels=1,
-            out_channels=2,
-            channels=(
-                16,
-                32,
-                64,
-                128,
-                256,
-            ),
-            strides=(2, 2, 2, 2),
-            num_res_units=2,
-            norm="batch",
-        )
+        self.checkpoint = checkpoint
 
-        checkpoint = torch.load(
-            self.checkpoint_path,
-            map_location="cpu",
-            weights_only=True,
-        )
+        if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+            config = checkpoint.get("config", {})
+            self.architecture = str(config.get("architecture", "SegResNet"))
+            if self.architecture.lower() != "segresnet":
+                raise ValueError(f"Unsupported metadata-bearing spleen architecture: {self.architecture}")
+            self.ROI_SIZE = tuple(int(v) for v in config.get("roi_size", self.ROI_SIZE))
+            self.SPACING = tuple(float(v) for v in config.get("target_spacing_mm", self.SPACING))
+            self.INTENSITY_A_MIN = float(config.get("hu_min", -175.0))
+            self.INTENSITY_A_MAX = float(config.get("hu_max", 250.0))
+            self.NORMALIZE_NONZERO = bool(config.get("normalize_nonzero", True))
+            self.validation_dice = float(checkpoint["best_val_dice"]) if checkpoint.get("best_val_dice") is not None else None
+            self.model = SegResNet(
+                spatial_dims=3,
+                init_filters=int(config.get("init_filters", 16)),
+                in_channels=int(config.get("in_channels", 1)),
+                out_channels=int(config.get("out_channels", 2)),
+                dropout_prob=float(config.get("dropout_prob", 0.0)),
+                blocks_down=tuple(config.get("blocks_down", [1, 2, 2, 4])),
+                blocks_up=tuple(config.get("blocks_up", [1, 1, 1])),
+            )
+            state_dict = checkpoint["state_dict"]
+        else:
+            self.architecture = "MONAI UNet 3D"
+            self.NORMALIZE_NONZERO = False
+            self.validation_dice = None
+            self.model = UNet(
+                spatial_dims=3,
+                in_channels=1,
+                out_channels=2,
+                channels=(16, 32, 64, 128, 256),
+                strides=(2, 2, 2, 2),
+                num_res_units=2,
+                norm="batch",
+            )
+            state_dict = checkpoint
 
-        self.model.load_state_dict(
-            checkpoint,
-            strict=True,
-        )
+        if not isinstance(state_dict, dict):
+            raise ValueError("Checkpoint does not contain a valid model state_dict.")
+        self.model.load_state_dict(state_dict, strict=True)
 
         self.model.to(self.device)
         self.model.eval()
 
-        self.inferer = SlidingWindowInferer(
-            roi_size=self.ROI_SIZE,
-            sw_batch_size=(
-                1
-                if self.device.type == "cpu"
-                else 4
-            ),
+        self.sw_batch_size = 1 if self.device.type == "cpu" else 4
+        self.sw_overlap = 0.25 if self.architecture.lower() == "segresnet" else 0.5
+        inferer_kwargs = {
+            "roi_size": self.ROI_SIZE,
+            "sw_batch_size": self.sw_batch_size,
+            "overlap": self.sw_overlap,
+            "mode": "gaussian",
+        }
+        if self.device.type == "cuda":
+            inferer_kwargs.update(sw_device=self.device, device=torch.device("cpu"))
+        self.inferer = SlidingWindowInferer(**inferer_kwargs),
             overlap=0.5,
         )
 
@@ -239,7 +259,7 @@ class SpleenUNetAdapter:
             "name":
                 "RadAssist Spleen CT Segmentation",
             "architecture":
-                self.ARCHITECTURE,
+                self.architecture,
             "task":
                 self.TASK,
             "device":
@@ -263,7 +283,11 @@ class SpleenUNetAdapter:
                     else 4
                 ),
             "overlap":
-                0.5,
+                self.sw_overlap,
+            "validation_dice":
+                self.validation_dice,
+            "normalize_nonzero":
+                getattr(self, "NORMALIZE_NONZERO", False),
             "required_spacing_mm":
                 list(self.SPACING),
             "required_orientation":
