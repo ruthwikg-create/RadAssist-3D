@@ -1,4 +1,4 @@
-# RadAssist 3D — v5 Medical-QC Workstation
+# RadAssist 3D — Medical Imaging Research Workstation
 
 RadAssist 3D is a research/engineering-oriented browser workstation for 3D CT segmentation, MPR review, volumetric measurements, HU statistics, 3D surface visualization, and reproducible model provenance.
 
@@ -7,7 +7,7 @@ RadAssist 3D is a research/engineering-oriented browser workstation for 3D CT se
 Backend CMD:
 
 ```cmd
-cd /d "E:\Backup\v4\backend"
+cd /d "<RadAssist-3D>\backend"
 venv\Scripts\activate
 python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
@@ -15,7 +15,7 @@ python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 Frontend CMD:
 
 ```cmd
-cd /d "E:\Backup\v4\frontend"
+cd /d "<RadAssist-3D>\frontend"
 npm install
 npm run dev
 ```
@@ -51,4 +51,4 @@ This improves traceability and measurement QA, but it does not make the software
 
 ## Final verified baseline
 
-This build includes the TypeScript fixes for the measurement-QA schema (`MeasurementQuality`) and the nullable legacy-case access in `ScanWorkspace.tsx`. The verification script can resolve TypeScript from the frontend project or the global compiler.
+The repository includes automated source checks, backend regression tests, and frontend TypeScript/build verification. Runtime model inference still requires the configured model checkpoints and should be validated locally against representative test volumes before any research result is relied upon.
