@@ -21,6 +21,7 @@ import type {
 type Props = {
   mesh: MeshData;
   labelMeshes?: Record<string, LabelMeshData>;
+  meshDiagnostics?: Record<string, string>;
   target?: CaseResult["target"];
 };
 
@@ -117,22 +118,27 @@ function getSurfaces(
 function makeGeometry(mesh: MeshData) {
   const geometry = new THREE.BufferGeometry();
 
+  // Three.js indexed geometry requires the position array and face indices
+  // to remain parallel. Do not remove individual invalid vertices while
+  // retaining their original indices.
   const vertices: number[] = [];
+  const validVertex: boolean[] = [];
 
   for (const vertex of mesh.vertices) {
     const x = Number(vertex?.[0]);
     const y = Number(vertex?.[1]);
     const z = Number(vertex?.[2]);
+    const valid =
+      Number.isFinite(x) &&
+      Number.isFinite(y) &&
+      Number.isFinite(z);
 
-    if (
-      !Number.isFinite(x) ||
-      !Number.isFinite(y) ||
-      !Number.isFinite(z)
-    ) {
-      continue;
-    }
-
-    vertices.push(x, y, z);
+    validVertex.push(valid);
+    vertices.push(
+      valid ? x : 0,
+      valid ? y : 0,
+      valid ? z : 0,
+    );
   }
 
   const indices: number[] = [];
@@ -151,7 +157,10 @@ function makeGeometry(mesh: MeshData) {
       c >= 0 &&
       a < mesh.vertices.length &&
       b < mesh.vertices.length &&
-      c < mesh.vertices.length
+      c < mesh.vertices.length &&
+      validVertex[a] &&
+      validVertex[b] &&
+      validVertex[c]
     ) {
       indices.push(a, b, c);
     }
@@ -174,6 +183,7 @@ function makeGeometry(mesh: MeshData) {
 export default function ThreeDMeshViewer({
   mesh,
   labelMeshes,
+  meshDiagnostics,
   target,
 }: Props) {
   const containerRef =
@@ -903,8 +913,13 @@ export default function ThreeDMeshViewer({
         >
           {error && (
             <div className="absolute inset-0 z-10 flex items-center justify-center p-6">
-              <div className="rounded-lg border border-red-400/20 bg-red-950/40 p-4 text-center text-xs text-red-200">
-                {error}
+              <div className="max-w-md rounded-lg border border-red-400/20 bg-red-950/40 p-4 text-center text-xs text-red-200">
+                <div>{error}</div>
+                {diagnosticText ? (
+                  <div className="mt-2 break-words text-[9px] text-red-200/70">
+                    {diagnosticText}
+                  </div>
+                ) : null}
               </div>
             </div>
           )}
