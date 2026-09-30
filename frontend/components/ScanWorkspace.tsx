@@ -453,22 +453,33 @@ export default function ScanWorkspace() {
 
   useEffect(() => {
     void (async () => {
-      try {
-        const health =
-          await fetchHealth();
+      const refreshStatus = async () => {
+        try {
+          const health = await fetchHealth();
+          if (!disposed) setBackend(health);
+        } catch {
+          if (!disposed) setBackend(null);
+        }
+      };
 
-        setBackend(health);
+      await refreshStatus();
+
+      try {
+        const cases = await listCases();
+        if (!disposed) setHistory(cases);
       } catch {
-        setBackend(null);
+        if (!disposed) setHistory([]);
       }
 
-      try {
-        setHistory(
-          await listCases(),
-        );
-      } catch {
-        setHistory([]);
-      }
+      const timer = window.setInterval(
+        () => void refreshStatus(),
+        5000,
+      );
+
+      return () => {
+        disposed = true;
+        window.clearInterval(timer);
+      };
     })();
   }, []);
 
@@ -1125,9 +1136,9 @@ export default function ScanWorkspace() {
                   }
                   disabled={working}
                   modalityLabel={
-                    selectedModel.modality === "MR"
-                      ? "MRI"
-                      : "CT"
+                    selectedTarget === "spleen"
+                      ? "CT"
+                      : "MRI"
                   }
                 />
               </div>
@@ -1179,18 +1190,21 @@ export default function ScanWorkspace() {
                 !working && (
                   <div className="mt-3 rounded-xl border border-amber-300/10 bg-amber-300/[0.035] p-3 text-[9px] leading-4 text-amber-100">
                     <strong>
-                      {
-                        selectedModel.display_name
-                      }{" "}
-                      model unavailable.
-                    </strong>{" "}
-                    You can still
-                    select this anatomy.
-                    Start the backend
-                    and load the
-                    corresponding model
-                    before running
-                    Analyze.
+                      {selectedModel.display_name} model unavailable.
+                    </strong>
+                    <div className="mt-1 text-amber-100/70">
+                      Analyze is disabled until the selected checkpoint is loaded by the backend.
+                    </div>
+                    {selectedModel.error ? (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-amber-200/80">
+                          Model diagnostics
+                        </summary>
+                        <div className="mt-1 break-words font-mono text-[8px] leading-4 text-amber-100/60">
+                          {selectedModel.error}
+                        </div>
+                      </details>
+                    ) : null}
                   </div>
                 )}
 
