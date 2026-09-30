@@ -1,0 +1,105 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Python virtual environments
+venv/
+.venv/
+env/
+ENV/
+backend/venv/
+backend/.venv/
+
+# Python caches/tools
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+build/
+.turbo/
+
+# Package manager logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Medical imaging data
+*.nii
+*.nii.gz
+*.dcm
+*.dicom
+
+# Medical imaging archives
+*.zip
+*.7z
+*.tar
+*.tar.gz
+
+# Local/generated application data
+backend/data/
+data/
+outputs/
+results/
+runs/
+uploads/
+generated/
+temp/
+tmp/
+
+# AI model weights
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.safetensors
+*.bin
+
+# Logs
+*.log
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Local AI/tool configuration
+.claude/
+
+# Local backup copies
+RadAssist-3D-FINAL-VERIFIED-BACKUP/
+
+# Generated test/result files
+heart_result.json
+heart_result_fixed.json
+
+# Accidental/local files
+0
+
+# Backup / temporary source copies
+*.bak
+*.before-*
+*.before_*
+*.backup
+
+# TypeScript generated build information
+*.tsbuildinfo

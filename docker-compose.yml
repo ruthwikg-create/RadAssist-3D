@@ -1,0 +1,40 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      RADASSIST_MODEL_PATH: /app/models/spleen_segresnet.pth
+      RADASSIST_CASE_ROOT: /app/data/cases
+      RADASSIST_CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      RADASSIST_ALLOW_DEMO: "true"
+      RADASSIST_MAX_UPLOAD_BYTES: "536870912"
+      RADASSIST_MAX_EXTRACTED_BYTES: "2147483648"
+      RADASSIST_MESH_MAX_VERTICES: "250000"
+      RADASSIST_DEVICE: "auto"
+    volumes:
+      - ./backend/models:/app/models:ro
+      - ./backend/data/cases:/app/data/cases
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:3000"

@@ -1,0 +1,16 @@
+fastapi==0.141.1
+uvicorn[standard]>=0.35,<1.0
+python-multipart>=0.0.20,<1.0
+orjson>=3.10,<4.0
+
+numpy>=2.0,<2.6
+scikit-image>=0.24,<1.0
+SimpleITK==2.5.6
+nibabel==5.4.2
+
+pydantic==2.13.5
+
+# AI
+# PyPI publishes wheels for Python 3.10+.
+torch==2.14.0
+monai==1.6.0

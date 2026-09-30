@@ -1,0 +1,258 @@
+from __future__ import annotations
+
+import hashlib
+import os
+from pathlib import Path
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+from monai.inferers import SliceInferer
+from monai.networks.nets import UNet
+
+
+DEFAULT_MODEL_PATH = (
+    Path(__file__).resolve().parent
+    / "models"
+    / "heart_ventricular"
+    / "model.pt"
+)
+
+MODEL_ENV = "RADASSIST_HEART_MODEL_PATH"
+
+HEART_LABELS = {
+    0: "background",
+    1: "lv_pool",
+    2: "myocardium",
+    3: "rv_pool",
+}
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+class CardiacVentricularAdapter:
+    """
+    Research-use adapter for the MONAI
+    Ventricular Short Axis 3-Label Segmentation bundle.
+
+    Expected modality:
+        Cardiac MR
+
+    Expected geometry:
+        2D short-axis slices, typically stacked along Z.
+
+    Output labels:
+        0 background
+        1 LV blood pool
+        2 myocardium
+        3 RV blood pool
+    """
+
+    ARCHITECTURE = "MONAI UNet 2D"
+    TASK = "Cardiac MRI Ventricular Segmentation"
+    MODALITY = "MR"
+    INPUT_SPATIAL_SHAPE = (256, 256)
+    OUTPUT_LABELS = HEART_LABELS
+
+    def __init__(self, checkpoint_path: str | Path | None = None) -> None:
+        configured = os.getenv(MODEL_ENV)
+
+        self.checkpoint_path = Path(
+            configured
+            or checkpoint_path
+            or DEFAULT_MODEL_PATH
+        ).expanduser().resolve()
+
+        if not self.checkpoint_path.exists():
+            raise FileNotFoundError(
+                f"Heart checkpoint not found: {self.checkpoint_path}"
+            )
+
+        self.device = torch.device(
+            "cuda:0" if torch.cuda.is_available() else "cpu"
+        )
+
+        self.model = UNet(
+            spatial_dims=2,
+            in_channels=1,
+            out_channels=4,
+            channels=(16, 32, 64, 128, 256),
+            strides=(2, 2, 2, 2),
+            num_res_units=2,
+        )
+
+        state = torch.load(
+            self.checkpoint_path,
+            map_location="cpu",
+            weights_only=True,
+        )
+
+        self.model.load_state_dict(state, strict=True)
+        self.model.to(self.device)
+        self.model.eval()
+
+        self.inferer = SliceInferer(
+            roi_size=(256, 256),
+            spatial_dim=2,
+        )
+
+        self.checkpoint_sha256 = sha256_file(self.checkpoint_path)
+
+    @staticmethod
+    def _scale_intensity(array: np.ndarray) -> np.ndarray:
+        array = np.asarray(array, dtype=np.float32)
+
+        finite = np.isfinite(array)
+        if not finite.any():
+            return np.zeros_like(array, dtype=np.float32)
+
+        values = array[finite]
+        low = float(values.min())
+        high = float(values.max())
+
+        if high <= low:
+            return np.zeros_like(array, dtype=np.float32)
+
+        output = (array - low) / (high - low)
+        output[~finite] = 0.0
+
+        return np.clip(output, 0.0, 1.0).astype(
+            np.float32,
+            copy=False,
+        )
+
+    @staticmethod
+    def _resize_xy(
+        tensor: torch.Tensor,
+        target_h: int = 256,
+        target_w: int = 256,
+    ) -> torch.Tensor:
+        """
+        Resize only the two in-plane dimensions.
+
+        Input:
+            [B, C, X, Y, Z]
+
+        Output:
+            [B, C, 256, 256, Z]
+        """
+        _, _, x, y, z = tensor.shape
+
+        if x == target_h and y == target_w:
+            return tensor
+
+        # [B,C,X,Y,Z] -> [B,Z,C,X,Y]
+        view = tensor.permute(0, 4, 1, 2, 3)
+
+        # Merge B and Z so every slice gets 2D bilinear resizing.
+        view = view.reshape(
+            view.shape[0] * view.shape[1],
+            view.shape[2],
+            view.shape[3],
+            view.shape[4],
+        )
+
+        view = F.interpolate(
+            view,
+            size=(target_h, target_w),
+            mode="bilinear",
+            align_corners=False,
+        )
+
+        view = view.reshape(
+            tensor.shape[0],
+            z,
+            tensor.shape[1],
+            target_h,
+            target_w,
+        )
+
+        return view.permute(0, 2, 3, 4, 1).contiguous()
+
+    @torch.inference_mode()
+    def predict(
+        self,
+        volume_xyz: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Predict a ventricular segmentation.
+
+        Input:
+            volume_xyz: [X,Y,Z] float/convertible array.
+
+        Output:
+            uint8 label map [X,Y,Z].
+        """
+        array = np.asarray(volume_xyz, dtype=np.float32)
+
+        if array.ndim == 2:
+            array = array[:, :, None]
+
+        if array.ndim != 3:
+            raise ValueError(
+                f"Heart input must be 2D or 3D, got shape {array.shape}"
+            )
+
+        original_shape = array.shape
+
+        array = self._scale_intensity(array)
+
+        tensor = torch.from_numpy(array).unsqueeze(0).unsqueeze(0)
+        tensor = tensor.to(self.device)
+
+        resized = self._resize_xy(tensor, 256, 256)
+
+        logits = self.inferer(
+            resized,
+            self.model,
+        )
+
+        labels = torch.argmax(logits, dim=1).to(torch.uint8)
+
+        # Map 256x256 predictions back to original XY geometry.
+        if (
+            original_shape[0] != 256
+            or original_shape[1] != 256
+        ):
+            labels = labels.float()
+
+            labels = F.interpolate(
+                labels.unsqueeze(1),
+                size=(
+                    original_shape[0],
+                    original_shape[1],
+                    original_shape[2],
+                ),
+                mode="nearest",
+            )
+
+            labels = labels[:, 0].to(torch.uint8)
+
+        result = labels[0].cpu().numpy()
+
+        if volume_xyz.ndim == 2:
+            return result[:, :, 0]
+
+        return result
+
+    def provenance(self) -> dict:
+        return {
+            "model": self.TASK,
+            "architecture": self.ARCHITECTURE,
+            "modality": self.MODALITY,
+            "checkpoint": str(self.checkpoint_path),
+            "checkpoint_sha256": self.checkpoint_sha256,
+            "device": str(self.device),
+            "input_shape": list(self.INPUT_SPATIAL_SHAPE),
+            "inferer": "SliceInferer",
+            "roi_size": [256, 256],
+            "labels": dict(self.OUTPUT_LABELS),
+            "clinical_use": False,
+            "intended_use": "Research purposes only",
+        }
