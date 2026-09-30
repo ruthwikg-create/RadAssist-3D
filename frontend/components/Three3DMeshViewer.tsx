@@ -307,7 +307,7 @@ export default function ThreeDMeshViewer({
     renderer.outputColorSpace =
       THREE.SRGBColorSpace;
     renderer.localClippingEnabled = true;
-    renderer.clippingPlanes = [clippingPlaneRef.current];
+    renderer.clippingPlanes = clipEnabled ? [clippingPlaneRef.current] : [];
 
     const width =
       Math.max(
@@ -460,7 +460,6 @@ export default function ThreeDMeshViewer({
           wireframe: false,
           depthWrite: true,
           depthTest: true,
-          clippingPlanes: [clippingPlaneRef.current],
         });
 
       const object =
@@ -682,7 +681,7 @@ export default function ThreeDMeshViewer({
       groupRef.current = null;
       objectsRef.current.clear();
     };
-  }, [surfaces]);
+  }, [surfaces, clipEnabled]);
 
   useEffect(() => {
     clippingPlaneRef.current.constant =
@@ -693,6 +692,11 @@ export default function ThreeDMeshViewer({
           return Math.max(max, box.getSize(new THREE.Vector3()).length());
         }, 1) ?? 1,
       );
+    if (rendererRef.current) {
+      rendererRef.current.clippingPlanes = clipEnabled
+        ? [clippingPlaneRef.current]
+        : [];
+    }
     for (
       const [
         id,
@@ -857,6 +861,15 @@ export default function ThreeDMeshViewer({
             title="Toggle grid"
           >
             <Grid3X3 size={13} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setClipEnabled((value) => !value)}
+            className={`rounded-md border px-2 py-1 text-[9px] ${clipEnabled ? "border-cyan-400/40 text-cyan-300" : "border-white/10 text-slate-400"}`}
+            title="Toggle clipping plane"
+          >
+            Clip
           </button>
 
           <button
