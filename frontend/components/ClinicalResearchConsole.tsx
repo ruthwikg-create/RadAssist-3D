@@ -74,6 +74,7 @@ export default function ClinicalResearchConsole({
   onCompare,
   onSettings,
   viewerContent,
+  importContent,
 }: {
   result: CaseResult | null;
   backend: BackendHealth | null;
@@ -88,6 +89,7 @@ export default function ClinicalResearchConsole({
   onCompare: () => void;
   onSettings: () => void;
   viewerContent: React.ReactNode;
+  importContent: React.ReactNode;
 }) {
   const quality = result?.measurement_quality;
   const advanced = result?.advanced_metrics;
@@ -179,7 +181,7 @@ export default function ClinicalResearchConsole({
           <Card className="cw-empty">
             <div className="cw-empty-title">Research workstation</div>
             <p>Import a CT/MRI DICOM study or NIfTI volume to activate MPR, AI segmentation, quantitative QA, provenance and research export.</p>
-            <button className="cw-primary" onClick={onImport}><UploadCloud size={15} /> Import DICOM/NIfTI</button>
+            <button className="cw-primary" onClick={onImport}><UploadCloud size={15} /> Import DICOM/NIfTI</button><div id="cw-import-zone" className="cw-import-zone">{importContent}</div>
           </Card>
         ) : mode === "research" ? (
           <>
