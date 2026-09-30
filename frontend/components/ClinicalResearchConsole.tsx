@@ -3,6 +3,7 @@
 import {
   Archive,
   BarChart3,
+  Database,
   CheckCircle2,
   Download,
   FileDown,
@@ -11,6 +12,7 @@ import {
   HelpCircle,
   Layers3,
   Lock,
+  Microscope,
   RefreshCcw,
   Settings,
   ShieldCheck,
@@ -27,6 +29,20 @@ type Mode = "mpr" | "ai" | "research";
 
 function n(value: number | null | undefined, digits = 2) {
   return typeof value === "number" && Number.isFinite(value) ? value.toFixed(digits) : "—";
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return "—";
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(value));
+  } catch {
+    return "—";
+  }
 }
 
 function statusTone(value: string) {
@@ -230,7 +246,7 @@ export default function ClinicalResearchConsole({
       </aside>
 
       <main className="cw-main">
-        {!result ? (
+        {!result && section !== "studies" && section !== "import" ? (
           <Card className="cw-empty">
             <div className="cw-empty-title">Research workstation</div>
             <p>Import a CT/MRI DICOM study or NIfTI volume to activate MPR, AI segmentation, quantitative QA, provenance and research export.</p>
@@ -253,17 +269,17 @@ export default function ClinicalResearchConsole({
             <div className="cw-dashboard-grid">
               <Card>
                 <CardTitle icon={<Database size={16} />} title="Current Study" meta="ACTIVE CASE" />
-                <div className="cw-dashboard-value">{result.target.toUpperCase()} · {result.modality}</div>
-                <div className="cw-dashboard-meta">{result.source_type} · {dimensions} · {spacing} mm</div>
+                <div className="cw-dashboard-value">{result ? `${result.target.toUpperCase()} · ${result.modality}` : "NO STUDY LOADED"}</div>
+                <div className="cw-dashboard-meta">{result ? `${result.source_type} · ${dimensions} · ${spacing} mm` : "Import a CT/MRI study to activate the workstation."}</div>
                 <div className="cw-dashboard-actions">
                   <button type="button" onClick={() => goToSection("mpr")}>MPR Viewer</button>
-                  <button type="button" onClick={() => goToSection("surface3d")}>3D Reconstruction</button>
+                  <button type="button" disabled={!result} onClick={() => goToSection("surface3d")}>3D Reconstruction</button>
                 </div>
               </Card>
               <Card>
                 <CardTitle icon={<Microscope size={16} />} title="AI & Processing" meta="RUNTIME" />
                 <div className="cw-dashboard-value">{loaded}/3 models ready</div>
-                <div className="cw-dashboard-meta">Device: {device.toUpperCase()} · Processing: {result.processing_seconds.toFixed(2)} s</div>
+                <div className="cw-dashboard-meta">{result ? `Device: ${device.toUpperCase()} · Processing: ${result.processing_seconds.toFixed(2)} s` : `Device: ${device.toUpperCase()} · Awaiting study`}</div>
                 <div className="cw-dashboard-actions">
                   <button type="button" onClick={() => goToSection("metrics")}>Quantification</button>
                   <button type="button" onClick={() => goToSection("qa")}>QA & Validation</button>
@@ -274,7 +290,7 @@ export default function ClinicalResearchConsole({
                 <div className="cw-dashboard-value">{result.provenance_record ? "TRACEABLE" : "REVIEW"}</div>
                 <div className="cw-dashboard-meta">Request: {result.request_id.slice(0, 16)} · Schema: {String(result.provenance_record?.schema_version ?? "—")}</div>
                 <div className="cw-dashboard-actions">
-                  <button type="button" onClick={onRefreshCase}>Refresh Case</button>
+                  <button type="button" disabled={!result} onClick={onRefreshCase}>Refresh Case</button>
                   <button type="button" onClick={() => goToSection("export")}>Research Export</button>
                 </div>
               </Card>
