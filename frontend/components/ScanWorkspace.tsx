@@ -16,6 +16,7 @@ import {
   ScanLine,
   Server,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   UploadCloud,
