@@ -459,9 +459,10 @@ export default function ThreeDMeshViewer({
         );
 
       if (
-        !geometry.attributes
-          .position ||
-        geometry.index === null
+        !geometry.attributes.position ||
+        geometry.attributes.position.count < 3 ||
+        geometry.index === null ||
+        geometry.index.count < 3
       ) {
         geometry.dispose();
         continue;
