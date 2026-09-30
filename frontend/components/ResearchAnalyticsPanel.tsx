@@ -176,11 +176,12 @@ export default function ResearchAnalyticsPanel({
   result: CaseResult;
 }) {
   const quality = result.measurement_quality;
-  const advanced = result.advanced_metrics ?? {};
+  const advanced = result.advanced_metrics;
   const model = result.model_provenance;
   const validation = result.validation_benchmark;
   const exportStatus = result.dicom_export?.status ?? "NOT_AVAILABLE";
-  const schema = result.provenance_record?.schema_version ?? "radassist-result-1.0";
+  const schemaValue = result.provenance_record?.schema_version;
+  const schema = schemaValue == null ? "radassist-result-1.0" : String(schemaValue);
 
   return (
     <section id="research" className="ra-research-console ra-enter ra-enter-4">
@@ -203,7 +204,7 @@ export default function ResearchAnalyticsPanel({
         <Stat label="Target volume" value={fmt(result.volume_cm3, 2, " cm³")} note="labelmap volume" />
         <Stat label="Surface area" value={fmt(quality?.surface_area_cm2, 2, " cm²")} note="mesh-derived" />
         <Stat label="Equivalent diameter" value={fmt(quality?.equivalent_diameter_mm, 1, " mm")} note="volume-equivalent sphere" />
-        <Stat label="Sphericity" value={fmt(advanced.sphericity, 4)} note="shape descriptor" />
+        <Stat label="Sphericity" value={fmt(advanced?.sphericity, 4)} note="shape descriptor" />
         <Stat label="Processing" value={fmt(result.processing_seconds, 2, " s")} note={`mesh step ${result.mesh_step_size}`} />
         <Stat label="QA status" value={quality?.status ?? "REVIEW"} note={quality?.flags?.length ? `${quality.flags.length} review flag(s)` : "no automated flags"} />
       </div>
@@ -243,9 +244,9 @@ export default function ResearchAnalyticsPanel({
             <ShieldCheck size={16} />
           </div>
           <div className="ra-integrity-grid">
-            <Stat label="Input contract" value={result.input_validation?.status ?? "—"} />
-            <Stat label="Patient accuracy" value={result.uncertainty_status?.patient_specific_accuracy ?? "—"} />
-            <Stat label="Measurement uncertainty" value={result.uncertainty_status?.measurement_uncertainty ?? "—"} />
+            <Stat label="Input contract" value={String(result.input_validation?.status ?? "—")} />
+            <Stat label="Patient accuracy" value={String(result.uncertainty_status?.patient_specific_accuracy ?? "—")} />
+            <Stat label="Measurement uncertainty" value={String(result.uncertainty_status?.measurement_uncertainty ?? "—")} />
             <Stat label="Result schema" value={schema} />
             <Stat label="DICOM export" value={exportStatus} />
             <Stat label="Provenance" value={result.provenance_record ? "Captured" : "—"} />
