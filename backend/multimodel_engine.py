@@ -597,6 +597,7 @@ class MultiModelInferenceEngine:
             sitk.sitkUInt8,
         )
 
+        mesh_data = MeshData([], [], 0, 0)
         try:
             mesh_data, actual_step = create_mesh(foreground)
             mesh_data = _smooth_mesh(mesh_data)
