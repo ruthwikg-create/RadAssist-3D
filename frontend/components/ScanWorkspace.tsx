@@ -910,5 +910,4 @@ export default function ScanWorkspace() {
       }
     />
   );
-  );
 }
