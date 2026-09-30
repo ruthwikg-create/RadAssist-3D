@@ -526,6 +526,10 @@ class SegmentResponse(BaseModel):
         default_factory=dict
     )
 
+    mesh_diagnostics: dict[str, str] = Field(
+        default_factory=dict
+    )
+
     mesh: MeshResponse
 
     original_spacing_mm: list[float]
@@ -545,6 +549,8 @@ class SegmentResponse(BaseModel):
     dicom_sr_result: dict[str, Any] | None = None
     uncertainty_status: dict[str, Any] | None = None
     input_validation: dict[str, Any] | None = None
+    input_manifest: list[dict[str, Any]] | None = None
+    dicom_export: dict[str, Any] | None = None
 
 
 class CaseSummary(BaseModel):
