@@ -125,6 +125,8 @@ export type CaseResult = {
 
   label_meshes?: Record<string, LabelMeshData>;
 
+  mesh_diagnostics?: Record<string, string>;
+
   label_component_qa?: Record<string, LabelComponentQA>;
 
   measurement_quality?: MeasurementQuality;
