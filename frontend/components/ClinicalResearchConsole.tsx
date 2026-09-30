@@ -19,6 +19,7 @@ import {
   Box,
   XCircle,
 } from "lucide-react";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import type { BackendHealth, CaseResult, CaseSummary } from "../lib/types";
 
@@ -98,6 +99,11 @@ export default function ClinicalResearchConsole({
   const totalLabelPct = labels.reduce((sum, x) => sum + x.fraction_pct, 0);
   const agreement = quality?.volume_difference_pct;
   const model = result?.model_provenance;
+  const [showSettings, setShowSettings] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [syncLocked, setSyncLocked] = useState(true);
+  const [layoutMode, setLayoutMode] = useState<"stack" | "2x2">("stack");
+  const [showExportDock, setShowExportDock] = useState(true);
   const hash = model?.checkpoint_sha256 ? model.checkpoint_sha256.slice(0, 12) : "—";
   const device = backend?.device ?? "offline";
   const loaded = backend ? Object.values(backend.models ?? {}).filter((x) => x.loaded).length : 0;
@@ -148,13 +154,33 @@ export default function ClinicalResearchConsole({
         </nav>
         <div className="cw-header-actions">
           <span className="cw-live"><span /> LIVE SESSION</span>
-          <button title="Crosshair synchronization" onClick={() => onSetError("Crosshair synchronization is controlled by the active MPR tool state.")}><Lock size={14} /></button>
-          <button title="Layout preset" onClick={() => onModeChange("mpr")}><Grid2X2 size={14} /><span>2×2</span></button>
+          <button title={syncLocked ? "Unlock viewport synchronization" : "Lock viewport synchronization"} className={syncLocked ? "active" : ""} onClick={() => setSyncLocked((value) => !value)}><Lock size={14} /></button>
+          <button title="Toggle viewer layout" className={layoutMode === "2x2" ? "active" : ""} onClick={() => setLayoutMode((value) => value === "stack" ? "2x2" : "stack")}><Grid2X2 size={14} /><span>{layoutMode === "2x2" ? "2×2" : "1×3"}</span></button>
           <button title="Refresh current study" onClick={onRefreshCase}><RefreshCcw size={14} /></button>
-          <button title="Keyboard shortcuts" onClick={() => onSetError("Shortcuts: mouse wheel/↑↓ = slices, LMB = active MPR tool, MMB = pan, RMB = zoom.")}><HelpCircle size={14} /></button>
-          <button title="Settings" onClick={onSettings}><Settings size={14} /></button>
+          <button title="Keyboard shortcuts" className={showHelp ? "active" : ""} onClick={() => setShowHelp((value) => !value)}><HelpCircle size={14} /></button>
+          <button title="Settings" className={showSettings ? "active" : ""} onClick={() => { setShowSettings((value) => !value); onSettings(); }}><Settings size={14} /></button>
         </div>
       </header>
+
+      {showSettings && (
+        <section className="cw-settings-popover" aria-label="Workstation settings">
+          <div><b>WORKSTATION SETTINGS</b><span>Display-only controls. Inference and stored measurements are unchanged.</span></div>
+          <label><input type="checkbox" checked={syncLocked} onChange={(event) => setSyncLocked(event.target.checked)} /> Lock viewport synchronization</label>
+          <label><input type="checkbox" checked={layoutMode === "2x2"} onChange={(event) => setLayoutMode(event.target.checked ? "2x2" : "stack")} /> Use 2×2 workspace layout</label>
+          <label><input type="checkbox" checked={showExportDock} onChange={(event) => setShowExportDock(event.target.checked)} /> Show research export dock</label>
+          <button type="button" onClick={() => { setLayoutMode("stack"); setSyncLocked(true); setShowExportDock(true); }}>Reset workstation view</button>
+        </section>
+      )}
+
+      {showHelp && (
+        <section className="cw-help-popover" aria-label="Keyboard shortcuts">
+          <b>QUICK CONTROLS</b>
+          <span>Mouse wheel / ↑↓ — change MPR slice</span>
+          <span>LMB — active measurement tool</span>
+          <span>MMB — pan · RMB — zoom</span>
+          <span>Use the top 1×3 / 2×2 control to change the workstation arrangement.</span>
+        </section>
+      )}
 
       <aside className="cw-sidebar">
         <div>
@@ -290,7 +316,7 @@ export default function ClinicalResearchConsole({
               </div>
             </div>
 
-            <Card className="cw-export" >
+            {showExportDock ? <Card className="cw-export" >
               <div id="cw-export" />
               <CardTitle icon={<Archive size={16} />} title="Clinical Export & Scientific Interoperability Dock" meta="DICOM PS3.3 / TID 1500 / NIFTI-1 / STL" />
               <div className="cw-export-grid">
@@ -299,7 +325,7 @@ export default function ClinicalResearchConsole({
                 <button disabled={result.dicom_export?.status !== "GENERATED"} onClick={() => onDownload(`/api/v1/cases/${result.request_id}/dicom-sr`, "radassist-measurements-sr.dcm")}><FileDown size={22} /><b>DICOM SR (TID 1500)</b><span>Structured measurement report for research interoperability.</span><strong>Export TID 1500</strong></button>
                 <button onClick={() => onDownload(`/api/v1/cases/${result.request_id}/bundle`, `radassist-${result.request_id}-research.zip`)}><Download size={22} /><b>Full Research Bundle</b><span>JSON telemetry manifest + available case artifacts.</span><strong>Download .zip</strong></button>
               </div>
-            </Card>
+            </Card> : null}
           </>
         ) : (
           <div className="cw-mode-panel">
