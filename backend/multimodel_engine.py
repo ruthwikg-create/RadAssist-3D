@@ -553,6 +553,7 @@ class MultiModelInferenceEngine:
 
         label_meshes: dict[str, Any] = {}
         label_mesh_steps: list[int] = []
+        mesh_diagnostics: dict[str, str] = {}
 
         for label_value, label_name in TARGETS[target]["labels"].items():
             if label_value == 0:
@@ -579,10 +580,11 @@ class MultiModelInferenceEngine:
 
                 label_mesh_steps.append(label_step)
 
-            except Exception:
+            except Exception as mesh_error:
                 # Keep the anatomical label in the response even when
-                # surface extraction fails. The original segmentation
-                # remains available for quantitative analysis.
+                # surface extraction fails. Record the reason instead of
+                # silently presenting an empty surface.
+                mesh_diagnostics[f"label_{label_value}"] = str(mesh_error)
                 label_meshes[str(label_value)] = {
                     "label": int(label_value),
                     "name": label_name,
@@ -613,13 +615,14 @@ class MultiModelInferenceEngine:
 
             mesh_volume_cm3 = None
 
-        except Exception:
+        except Exception as mesh_error:
             mesh = self._empty_mesh()
             actual_step = max(
                 label_mesh_steps,
                 default=0,
             )
             mesh_volume_cm3 = None
+            mesh_diagnostics["combined"] = str(mesh_error)
 
         label_metrics = (
             self._label_metrics(
@@ -970,6 +973,8 @@ class MultiModelInferenceEngine:
             },
 
             "mesh": mesh,
+
+            "mesh_diagnostics": mesh_diagnostics,
 
             "original_spacing_mm": (
                 original_spacing
