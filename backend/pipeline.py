@@ -37,6 +37,7 @@ SW_OVERLAP = float(os.getenv("RADASSIST_SW_OVERLAP", "0.5"))
 SW_CPU_STITCH = os.getenv("RADASSIST_SW_CPU_STITCH", "true").lower() == "true"
 MESH_STEP_SIZE = int(os.getenv("RADASSIST_MESH_STEP_SIZE", "2"))
 MESH_MAX_VERTICES = int(os.getenv("RADASSIST_MESH_MAX_VERTICES", "250000"))
+MESH_MAX_STEP_SIZE = int(os.getenv("RADASSIST_MESH_MAX_STEP_SIZE", "16"))
 MAX_UPLOAD_BYTES = int(os.getenv("RADASSIST_MAX_UPLOAD_BYTES", str(512 * 1024 * 1024)))
 MAX_EXTRACTED_BYTES = int(os.getenv("RADASSIST_MAX_EXTRACTED_BYTES", str(2 * 1024 * 1024 * 1024)))
 MAX_BROWSER_PREVIEW_DIM = int(os.getenv("RADASSIST_MAX_BROWSER_PREVIEW_DIM", "128"))
@@ -538,18 +539,52 @@ def _physical_mesh_from_mask(mask: sitk.Image, step_size: int) -> MeshData:
 
 
 def create_mesh(mask: sitk.Image) -> tuple[MeshData, int]:
-    steps = sorted(set([
-        max(1, MESH_STEP_SIZE),
-        max(2, MESH_STEP_SIZE + 1),
-        max(3, MESH_STEP_SIZE + 2),
-        max(4, MESH_STEP_SIZE + 3),
-        max(5, MESH_STEP_SIZE + 4),
-    ]))
+    """Generate a renderable surface with adaptive sampling.
+
+    The labelmap remains the authoritative quantitative representation. Mesh
+    sampling is only a visualization/cross-check representation, so large
+    high-resolution MRI masks are allowed to use a coarser marching-cubes
+    step rather than silently returning an empty surface.
+    """
+    if not np.any(sitk.GetArrayFromImage(mask) > 0):
+        return MeshData([], [], 0, 0), 0
+
+    base = max(1, int(MESH_STEP_SIZE))
+    configured_max = max(base, int(MESH_MAX_STEP_SIZE))
+
+    # Dense 0.5 mm MRI masks can exceed a browser-safe vertex budget at the
+    # default step. Larger marching-cubes steps are explicitly supported by
+    # scikit-image and produce a coarser but still topologically valid surface.
+    candidates = {
+        base,
+        base + 1,
+        base + 2,
+        base + 3,
+        base + 4,
+        base * 2,
+        base * 3,
+        base * 4,
+        configured_max,
+    }
+    steps = sorted(step for step in candidates if 1 <= step <= configured_max)
+
+    last_mesh: MeshData | None = None
+    last_step = steps[-1] if steps else base
+
     for step in steps:
         mesh = _physical_mesh_from_mask(mask, step)
+        last_mesh = mesh
+        last_step = step
         if mesh.vertex_count <= MESH_MAX_VERTICES:
             return mesh, step
-    raise RuntimeError("The generated segmentation surface exceeds the configured mesh vertex budget.")
+
+    # Never silently replace a non-empty segmentation with a zero-vertex
+    # surface. If the budget is still exceeded, return the coarsest successful
+    # surface; native labelmap measurements remain authoritative.
+    if last_mesh is not None and last_mesh.vertex_count > 0:
+        return last_mesh, last_step
+
+    raise RuntimeError("Unable to extract a surface from the non-empty segmentation mask.")
 
 
 def _make_browser_preview(image: sitk.Image) -> sitk.Image:
