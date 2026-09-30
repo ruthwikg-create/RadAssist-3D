@@ -27,7 +27,7 @@ jobs:
         run: python -m py_compile backend/*.py model_training/train_spleen_segresnet.py
 
       - name: Run backend regression tests
-        run: python backend/test_workstation_regression.py
+        run: python -m backend.test_workstation_regression
 
   frontend:
     runs-on: ubuntu-latest
