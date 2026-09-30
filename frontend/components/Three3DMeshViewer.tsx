@@ -257,6 +257,14 @@ export default function ThreeDMeshViewer({
   const [error, setError] =
     useState<string | null>(null);
 
+  const diagnosticText = useMemo(
+    () =>
+      Object.entries(meshDiagnostics ?? {})
+        .map(([key, value]) => `${key}: ${value}`)
+        .join(" · "),
+    [meshDiagnostics],
+  );
+
   useEffect(() => {
     setStates((previous) => {
       const next: Record<
