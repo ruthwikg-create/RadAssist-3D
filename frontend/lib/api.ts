@@ -5,6 +5,12 @@ import type {
   ModelsResponse,
 } from "./types";
 
+const API_TOKEN = process.env.NEXT_PUBLIC_RADASSIST_API_TOKEN ?? "";
+
+function authHeaders(): Record<string, string> {
+  return API_TOKEN ? { Authorization: "Bearer " + API_TOKEN } : {};
+}
+
 export const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 ).replace(/\/$/, "");
@@ -22,6 +28,7 @@ export async function fetchHealth(): Promise<BackendHealth> {
     `${API_BASE_URL}/health`,
     {
       cache: "no-store",
+      headers: authHeaders(),
     },
   );
 
@@ -39,6 +46,7 @@ export async function fetchModels(): Promise<ModelsResponse> {
     `${API_BASE_URL}/api/v1/models`,
     {
       cache: "no-store",
+      headers: authHeaders(),
     },
   );
 
@@ -84,6 +92,10 @@ export function segmentFiles(
       );
 
       xhr.responseType = "json";
+
+      if (API_TOKEN) {
+        xhr.setRequestHeader("Authorization", "Bearer " + API_TOKEN);
+      }
 
       xhr.timeout =
         60 * 60 * 1000;
