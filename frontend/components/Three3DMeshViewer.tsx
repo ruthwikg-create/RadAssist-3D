@@ -288,7 +288,14 @@ export default function ThreeDMeshViewer({
     const container =
       containerRef.current;
 
-    if (!container || surfaces.length === 0) {
+    if (!container) {
+      return;
+    }
+
+    if (surfaces.length === 0) {
+      setError(
+        "No renderable 3D surface was returned by the segmentation pipeline. Check the segmentation voxel count and backend mesh diagnostics.",
+      );
       return;
     }
 
