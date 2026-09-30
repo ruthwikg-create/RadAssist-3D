@@ -347,7 +347,7 @@ export default function ClinicalResearchConsole({
               <aside className="cw-clinical-inspector">
                 <Card>
                   <CardTitle icon={<Microscope size={16} />} title="AI SEGMENTATION" meta={model?.checkpoint_loaded ? "LOADED" : "UNAVAILABLE"} />
-                  <div className="cw-inspector-model"><b>{model?.architecture ?? "Model unavailable"}</b><span>{model?.name ?? "Select a supported anatomy model."}</span><small>{result.source_type} · {result.modality} · {device.toUpperCase()}</small></div>
+                  <div className="cw-inspector-model"><b>{model?.architecture ?? "Model unavailable"}</b><span>{model?.name ?? "Select a supported anatomy model."}</span><small>{result!.source_type} · {result!.modality} · {device.toUpperCase()}</small></div>
                   <button type="button" className="cw-inspector-primary" onClick={() => goToSection("research")}>View AI / QA Results</button>
                 </Card>
                 <Card>
@@ -367,10 +367,10 @@ export default function ClinicalResearchConsole({
                   </div>
                 </Card>
                 <Card>
-                  <CardTitle icon={<Activity size={16} />} title="WINDOW & LEVEL (LUT)" meta={result.modality === "MR" ? "MR NATIVE" : "CT"} />
-                  <div className="cw-lut-preview"><span>LEVEL</span><b>{n(result.hu_statistics.median_hu, 0)}</b></div>
-                  <div className="cw-lut-preview"><span>WIDTH</span><b>{n(result.hu_statistics.p95_hu == null || result.hu_statistics.p05_hu == null ? null : result.hu_statistics.p95_hu - result.hu_statistics.p05_hu, 0)}</b></div>
-                  <small className="cw-lut-note">{result.modality === "MR" ? "Native MR signal; values are not HU." : quality?.hu_calibrated ? "DICOM-derived HU calibration available." : "Source intensity is not independently HU calibrated."}</small>
+                  <CardTitle icon={<Activity size={16} />} title="WINDOW & LEVEL (LUT)" meta={result!.modality === "MR" ? "MR NATIVE" : "CT"} />
+                  <div className="cw-lut-preview"><span>LEVEL</span><b>{n(result!.hu_statistics.median_hu, 0)}</b></div>
+                  <div className="cw-lut-preview"><span>WIDTH</span><b>{n(result!.hu_statistics.p95_hu == null || result!.hu_statistics.p05_hu == null ? null : result!.hu_statistics.p95_hu - result!.hu_statistics.p05_hu, 0)}</b></div>
+                  <small className="cw-lut-note">{result!.modality === "MR" ? "Native MR signal; values are not HU." : quality?.hu_calibrated ? "DICOM-derived HU calibration available." : "Source intensity is not independently HU calibrated."}</small>
                 </Card>
                 <Card>
                   <div className="cw-inspector-actions">
