@@ -498,8 +498,14 @@ textarea:focus-visible {
 
 .ra-view-stack {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
   gap: 10px;
   min-width: 0;
+}
+
+.ra-view-stack > .ra-study-strip {
+  grid-column: 1 / -1;
 }
 
 .ra-inspector {
@@ -1290,6 +1296,12 @@ textarea:focus-visible {
   }
   .ra-case-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .ra-view-stack {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ra-view-stack > .ra-study-strip {
+    grid-column: auto;
   }
   .ra-inspector {
     position: static;
