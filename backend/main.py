@@ -1347,7 +1347,7 @@ async def demo(
     if (
         os.getenv(
             "RADASSIST_ALLOW_DEMO",
-            "true",
+            "false",
         ).lower()
         != "true"
     ):
