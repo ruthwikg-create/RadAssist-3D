@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      RADASSIST_MODEL_PATH: /app/models/spleen_segresnet.pth
+      RADASSIST_MODEL_PATH: /app/models/spleen_unet_model.pt
       RADASSIST_CASE_ROOT: /app/data/cases
       RADASSIST_CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
       RADASSIST_ALLOW_DEMO: "true"
