@@ -87,6 +87,15 @@ class WorkstationRegressionTests(unittest.TestCase):
             self.assertEqual(manifest[0]["size_bytes"], 14)
             self.assertNotIn("patient-name.dcm", manifest[0].values())
 
+    def test_input_manifest_contains_no_source_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "patient_name_123.dcm"
+            path.write_bytes(b"radassist-test")
+            from backend.engineering import build_input_manifest
+            manifest = build_input_manifest([path])
+            self.assertNotIn("patient_name_123.dcm", str(manifest))
+            self.assertEqual(len(manifest[0]["sha256"]), 64)
+
     def test_case_identifier_rejects_path_traversal(self) -> None:
         with self.assertRaises(ValueError):
             case_dir("../outside")
