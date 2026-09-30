@@ -853,7 +853,7 @@ export default function ScanWorkspace() {
       onOpenHistory={(item) => void openHistory(item)}
       onImport={openImportPicker}
       onRefreshCase={() => void refreshCurrentCase()}
-      onDownload={(path, filename) => void downloadArtifact(path, filename, setError)}
+      onDownload={(path, filename) => void downloadApiFile(path, filename).catch((err) => setError(err instanceof Error ? err.message : "Download failed."))}
       onSetError={setError}
       onCompare={() => void compareWithLatestCompatible()}
       onSettings={() => setShowSettings((value: boolean) => !value)}
