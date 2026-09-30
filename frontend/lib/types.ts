@@ -143,6 +143,7 @@ export type CaseResult = {
   dicom_sr_result?: Record<string, unknown>;
   uncertainty_status?: Record<string, unknown>;
   input_validation?: Record<string, unknown>;
+  input_manifest?: Array<Record<string, unknown>>;
 
   persisted?: boolean;
 };
