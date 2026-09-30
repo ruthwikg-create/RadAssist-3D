@@ -16,6 +16,7 @@ try:
     from .heart_model_adapter import CardiacVentricularAdapter
     from .pipeline import (
         create_mesh,
+        _mesh_geometry_metrics,
         load_medical_volume,
         write_sanitized_mask,
         write_sanitized_nifti,
@@ -25,6 +26,7 @@ except ImportError:
     from heart_model_adapter import CardiacVentricularAdapter
     from pipeline import (
         create_mesh,
+        _mesh_geometry_metrics,
         load_medical_volume,
         write_sanitized_mask,
         write_sanitized_nifti,
@@ -53,6 +55,123 @@ TARGETS = {
         },
     },
 }
+
+
+# Phase 1/3 engineering controls. These are deliberately conservative defaults:
+# retain the largest connected component per anatomical label, keep the raw
+# segmentation available for provenance, and smooth only the rendered surface.
+KEEP_LARGEST_COMPONENT = True
+MESH_SMOOTH_ITERATIONS = 3
+MESH_SMOOTH_LAMBDA = 0.35
+MESH_SMOOTH_MU = -0.40
+
+
+def _largest_component_per_label(mask: sitk.Image) -> tuple[sitk.Image, dict[str, dict[str, Any]]]:
+    """Remove disconnected islands independently for every foreground label."""
+    array = sitk.GetArrayFromImage(mask).astype(np.uint8, copy=False)
+    cleaned = np.zeros_like(array, dtype=np.uint8)
+    qa: dict[str, dict[str, Any]] = {}
+
+    for label in sorted(int(v) for v in np.unique(array) if int(v) != 0):
+        label_array = (array == label).astype(np.uint8)
+        before = int(label_array.sum())
+        if before == 0:
+            continue
+
+        binary = sitk.GetImageFromArray(label_array)
+        binary.CopyInformation(mask)
+        connected = sitk.ConnectedComponent(binary)
+        stats = sitk.LabelShapeStatisticsImageFilter()
+        stats.Execute(connected)
+        components = list(stats.GetLabels())
+        sizes = [int(stats.GetNumberOfPixels(component)) for component in components]
+
+        if KEEP_LARGEST_COMPONENT and components:
+            largest_component = components[int(np.argmax(sizes))]
+            retained = sitk.GetArrayFromImage(connected) == largest_component
+        else:
+            retained = label_array.astype(bool)
+
+        retained_count = int(retained.sum())
+        cleaned[retained] = np.uint8(label)
+        qa[str(label)] = {
+            "raw_connected_components": len(components),
+            "raw_voxel_count": before,
+            "retained_voxel_count": retained_count,
+            "removed_voxel_count": before - retained_count,
+            "largest_component_fraction_pct": round(
+                100.0 * max(sizes) / before, 3
+            ) if sizes else None,
+        }
+
+    output = sitk.GetImageFromArray(cleaned)
+    output.CopyInformation(mask)
+    output.SetSpacing(mask.GetSpacing())
+    output.SetOrigin(mask.GetOrigin())
+    output.SetDirection(mask.GetDirection())
+    return output, qa
+
+
+def _smooth_mesh(mesh: Any, iterations: int = MESH_SMOOTH_ITERATIONS) -> Any:
+    """Taubin-style surface smoothing without adding a runtime dependency."""
+    if mesh.vertex_count < 4 or mesh.face_count < 4 or iterations <= 0:
+        return mesh
+
+    vertices = np.asarray(mesh.vertices, dtype=np.float64)
+    faces = np.asarray(mesh.faces, dtype=np.int64)
+    adjacency: list[set[int]] = [set() for _ in range(len(vertices))]
+
+    for a, b, c in faces:
+        if not (0 <= a < len(vertices) and 0 <= b < len(vertices) and 0 <= c < len(vertices)):
+            continue
+        adjacency[a].update((int(b), int(c)))
+        adjacency[b].update((int(a), int(c)))
+        adjacency[c].update((int(a), int(b)))
+
+    for _ in range(iterations):
+        for factor in (MESH_SMOOTH_LAMBDA, MESH_SMOOTH_MU):
+            updated = vertices.copy()
+            for index, neighbors in enumerate(adjacency):
+                if not neighbors:
+                    continue
+                mean = vertices[list(neighbors)].mean(axis=0)
+                updated[index] = vertices[index] + factor * (mean - vertices[index])
+            vertices = updated
+
+    smoothed = type(mesh)(
+        vertices=np.round(vertices, 4).tolist(),
+        faces=faces.astype(np.int32).tolist(),
+        vertex_count=int(len(vertices)),
+        face_count=int(len(faces)),
+    )
+    return smoothed
+
+
+def _source_intensity_statistics(
+    image: sitk.Image,
+    mask: sitk.Image,
+) -> dict[str, float | None]:
+    source = sitk.GetArrayFromImage(image).astype(np.float32, copy=False)
+    foreground = sitk.GetArrayFromImage(mask) > 0
+    values = source[foreground]
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        return {
+            "mean_hu": None, "std_hu": None, "min_hu": None,
+            "max_hu": None, "median_hu": None,
+            "p05_hu": None, "p95_hu": None,
+        }
+    return {
+        # Field names are retained for API compatibility. For MRI these are
+        # source signal intensities, never HU.
+        "mean_hu": float(np.mean(values)),
+        "std_hu": float(np.std(values)),
+        "min_hu": float(np.min(values)),
+        "max_hu": float(np.max(values)),
+        "median_hu": float(np.median(values)),
+        "p05_hu": float(np.percentile(values, 5)),
+        "p95_hu": float(np.percentile(values, 95)),
+    }
 
 
 class MultiModelInferenceEngine:
@@ -158,149 +277,88 @@ class MultiModelInferenceEngine:
     def _measurement_quality(
         image: sitk.Image,
         mask: sitk.Image,
+        surface_area_cm2: float | None,
         mesh_volume_cm3: float | None,
+        intensity_stats: dict[str, float | None],
     ) -> dict[str, Any]:
-        """
-        Build generic MRI labelmap quality information.
-
-        MRI intensity is not treated as Hounsfield Units.
-        """
-
-        # Keep argument explicitly referenced so the function contract
-        # remains clear and stable.
-        _ = image
-
         mask_array = sitk.GetArrayFromImage(mask)
         foreground = mask_array > 0
-
-        voxel_count = int(
-            np.count_nonzero(foreground)
+        voxel_count = int(np.count_nonzero(foreground))
+        voxel_volume_mm3 = float(np.prod(mask.GetSpacing()))
+        labelmap_volume_cm3 = voxel_count * voxel_volume_mm3 / 1000.0
+        total_voxels = int(mask_array.size)
+        mask_fraction_pct = 100.0 * voxel_count / total_voxels if total_voxels else 0.0
+        equivalent_diameter_mm = (
+            (6.0 * labelmap_volume_cm3 * 1000.0 / np.pi) ** (1.0 / 3.0)
+            if labelmap_volume_cm3 > 0 else None
         )
-
-        voxel_volume_mm3 = float(
-            np.prod(mask.GetSpacing())
-        )
-
-        labelmap_volume_cm3 = (
-            voxel_count
-            * voxel_volume_mm3
-            / 1000.0
-        )
-
-        total_voxels = int(
-            mask_array.size
-        )
-
-        mask_fraction_pct = (
-            100.0 * voxel_count / total_voxels
-            if total_voxels
-            else 0.0
-        )
-
-        touches_boundary = False
-
-        if foreground.any():
-            touches_boundary = bool(
-                foreground[0, :, :].any()
-                or foreground[-1, :, :].any()
-                or foreground[:, 0, :].any()
-                or foreground[:, -1, :].any()
-                or foreground[:, :, 0].any()
-                or foreground[:, :, -1].any()
-            )
 
         connected_components = 0
         largest_component_fraction = None
-
         if foreground.any():
-            binary = sitk.GetImageFromArray(
-                foreground.astype(np.uint8)
-            )
-
+            binary = sitk.GetImageFromArray(foreground.astype(np.uint8))
             binary.CopyInformation(mask)
-
-            cc = sitk.ConnectedComponent(
-                binary
-            )
-
-            stats = (
-                sitk.LabelShapeStatisticsImageFilter()
-            )
-
+            cc = sitk.ConnectedComponent(binary)
+            stats = sitk.LabelShapeStatisticsImageFilter()
             stats.Execute(cc)
-
-            component_sizes = [
-                stats.GetNumberOfPixels(label)
-                for label in stats.GetLabels()
-            ]
-
-            connected_components = len(
-                component_sizes
+            sizes = [int(stats.GetNumberOfPixels(label)) for label in stats.GetLabels()]
+            connected_components = len(sizes)
+            largest_component_fraction = (
+                100.0 * max(sizes) / voxel_count if sizes else None
             )
 
-            if (
-                component_sizes
-                and voxel_count > 0
-            ):
-                largest_component_fraction = (
-                    100.0
-                    * max(component_sizes)
-                    / voxel_count
-                )
+        touches_boundary = bool(
+            foreground.any() and (
+                foreground[0].any() or foreground[-1].any()
+                or foreground[:, 0, :].any() or foreground[:, -1, :].any()
+                or foreground[:, :, 0].any() or foreground[:, :, -1].any()
+            )
+        )
 
         flags = [
             "PATIENT_SPECIFIC_ACCURACY_NOT_ESTIMATED",
             "MR_SOURCE_INTENSITY_IS_NOT_HU",
         ]
-
+        status = "PASS" if voxel_count else "FAIL"
         if voxel_count == 0:
-            status = "FAIL"
-            flags.append(
-                "EMPTY_SEGMENTATION"
-            )
+            flags.append("EMPTY_SEGMENTATION")
+        if connected_components > 1:
+            status = "REVIEW" if status != "FAIL" else status
+            flags.append(f"Post-processed segmentation still contains {connected_components} connected components.")
+        if largest_component_fraction is not None and largest_component_fraction < 95.0:
+            status = "REVIEW" if status != "FAIL" else status
+            flags.append("Largest connected component contains less than 95% of the foreground.")
+        if touches_boundary:
+            status = "REVIEW" if status != "FAIL" else status
+            flags.append("Segmentation touches the source-volume boundary; review for truncation or leakage.")
+        if mesh_volume_cm3 is not None and labelmap_volume_cm3 > 0:
+            difference = abs(mesh_volume_cm3 - labelmap_volume_cm3) / labelmap_volume_cm3 * 100.0
+            if difference > 5.0:
+                status = "REVIEW" if status != "FAIL" else status
+                flags.append(f"Mesh/labelmap volume difference is {difference:.1f}%.")
         else:
-            status = "REVIEW"
+            difference = None
 
         return {
             "status": status,
-            "measurement_method": (
-                "Voxel-count labelmap volume"
-            ),
-            "voxel_volume_mm3": (
-                voxel_volume_mm3
-            ),
-            "labelmap_volume_cm3": (
-                labelmap_volume_cm3
-            ),
-            "equivalent_diameter_mm": None,
-            "mask_fraction_pct": (
-                mask_fraction_pct
-            ),
-            "connected_components": (
-                connected_components
-            ),
-            "largest_component_fraction_pct": (
-                largest_component_fraction
-            ),
-            "touches_volume_boundary": (
-                touches_boundary
-            ),
-            "surface_area_cm2": None,
-            "mesh_volume_cm3": (
-                mesh_volume_cm3
-            ),
-            "volume_difference_pct": None,
-            "centroid_mm": (
-                MultiModelInferenceEngine
-                ._centroid_mm(mask)
-            ),
-            "intensity_domain": (
-                "MR source intensity values"
-            ),
+            "measurement_method": "Native labelmap voxel volume with independent smoothed-mesh geometry cross-check",
+            "voxel_volume_mm3": voxel_volume_mm3,
+            "labelmap_volume_cm3": labelmap_volume_cm3,
+            "equivalent_diameter_mm": equivalent_diameter_mm,
+            "mask_fraction_pct": mask_fraction_pct,
+            "connected_components": connected_components,
+            "largest_component_fraction_pct": largest_component_fraction,
+            "touches_volume_boundary": touches_boundary,
+            "surface_area_cm2": surface_area_cm2,
+            "mesh_volume_cm3": mesh_volume_cm3,
+            "volume_difference_pct": difference,
+            "centroid_mm": MultiModelInferenceEngine._centroid_mm(mask),
+            "intensity_domain": "MR source intensity values (uncalibrated)",
             "hu_calibrated": False,
             "rescale_slope": None,
             "rescale_intercept": None,
             "flags": flags,
+            **intensity_stats,
         }
 
     @staticmethod
@@ -482,9 +540,13 @@ class MultiModelInferenceEngine:
                     image
                 )
 
-                # Keep the original multiclass mask intact for all quantitative
-        # measurements. Build separate visualization meshes for each
-        # anatomical label so multi-label models remain distinguishable.
+                # Post-process independently per anatomical label. The raw model
+        # prediction is preserved only in provenance/QA; quantitative output
+        # uses the cleaned labelmap to prevent fragmented islands dominating
+        # meshes and measurements.
+        raw_mask = mask
+        mask, component_cleanup = _largest_component_per_label(mask)
+
         label_meshes: dict[str, Any] = {}
         label_mesh_steps: list[int] = []
 
@@ -498,9 +560,8 @@ class MultiModelInferenceEngine:
             )
 
             try:
-                label_mesh_data, label_step = create_mesh(
-                    label_mask
-                )
+                label_mesh_data, label_step = create_mesh(label_mask)
+                label_mesh_data = _smooth_mesh(label_mesh_data)
 
                 label_meshes[str(label_value)] = {
                     "label": int(label_value),
@@ -535,9 +596,8 @@ class MultiModelInferenceEngine:
         )
 
         try:
-            mesh_data, actual_step = create_mesh(
-                foreground
-            )
+            mesh_data, actual_step = create_mesh(foreground)
+            mesh_data = _smooth_mesh(mesh_data)
 
             mesh = {
                 "vertices": mesh_data.vertices,
@@ -651,13 +711,23 @@ class MultiModelInferenceEngine:
             / 1000.0
         )
 
-        quality = (
-            self._measurement_quality(
-                image,
-                mask,
-                mesh_volume_cm3,
-            )
+        surface_area_cm2, mesh_volume_cm3 = _mesh_geometry_metrics(
+            type("_Mesh", (), {
+                "vertices": mesh_data.vertices if "mesh_data" in locals() else [],
+                "faces": mesh_data.faces if "mesh_data" in locals() else [],
+                "vertex_count": mesh_data.vertex_count if "mesh_data" in locals() else 0,
+                "face_count": mesh_data.face_count if "mesh_data" in locals() else 0,
+            })()
         )
+        intensity_stats = _source_intensity_statistics(image, mask)
+        quality = self._measurement_quality(
+            image,
+            mask,
+            surface_area_cm2,
+            mesh_volume_cm3,
+            intensity_stats,
+        )
+        quality["component_cleanup"] = component_cleanup
 
         model = self.models[target]
 
@@ -860,15 +930,7 @@ class MultiModelInferenceEngine:
             "voxel_count": voxel_count,
 
             # MRI does not have HU semantics.
-            "hu_statistics": {
-                "mean_hu": None,
-                "std_hu": None,
-                "min_hu": None,
-                "max_hu": None,
-                "median_hu": None,
-                "p05_hu": None,
-                "p95_hu": None,
-            },
+            "hu_statistics": intensity_stats,
 
             "validation_benchmark": {
                 "validation_dice": (
@@ -894,7 +956,10 @@ class MultiModelInferenceEngine:
 
             # Per-label connected-component QA. This describes the
             # segmentation without changing the original mask.
-            "label_component_qa": label_component_qa,
+            "label_component_qa": {
+                **label_component_qa,
+                "cleanup": component_cleanup,
+            },
 
             "mesh": mesh,
 
