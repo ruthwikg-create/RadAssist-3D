@@ -13,22 +13,17 @@ import numpy as np
 import SimpleITK as sitk
 import torch
 try:
-    from backend.model_adapter import SpleenUNetAdapter
+    from backend.model_adapter import MODEL_PATH as ADAPTER_MODEL_PATH, SpleenUNetAdapter
 except ModuleNotFoundError as exc:
     if exc.name != "backend":
         raise
-    from model_adapter import SpleenUNetAdapter
+    from model_adapter import MODEL_PATH as ADAPTER_MODEL_PATH, SpleenUNetAdapter
 from skimage.measure import marching_cubes
 
 
 logger = logging.getLogger("radassist.pipeline")
 
-MODEL_PATH = Path(
-    os.getenv(
-        "RADASSIST_MODEL_PATH",
-        Path(__file__).resolve().parent / "models" / "spleen_unet_model.pt",
-    )
-)
+MODEL_PATH = ADAPTER_MODEL_PATH
 TARGET_SPACING_MM = (1.5, 1.5, 2.0)
 HU_MIN = -57.0
 HU_MAX = 164.0
