@@ -4,9 +4,9 @@ import "@fontsource-variable/noto-sans";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "RadAssist 3D — Imaging Workstation",
+  title: "RadAssist 3D — AI-Assisted Quantitative Medical Imaging",
   description:
-    "Research-oriented 3D CT segmentation, MPR visualization, volumetrics, and surface analytics.",
+    "AI-assisted medical imaging research workstation for CT and MRI segmentation, MPR, 3D reconstruction, quantitative QA, provenance, and research export.",
 };
 
 export default function RootLayout({
