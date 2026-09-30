@@ -205,7 +205,7 @@ export default function ClinicalResearchConsole({
 
             <div className="cw-kpi-grid">
               <Metric label="QUANTIFIED VOLUME" value={n(result.volume_cm3)} unit="cm³" code="VOI-01">
-                <div><span>Voxel: {n((quality?.voxel_volume_mm3 ?? 0) * result.voxel_count / 1000, 1)} cm³</span><span>Labelmap: {n(result.volume_cm3, 1)} cm³</span></div>
+                <div><span>Voxel: {n(quality?.voxel_volume_mm3 == null ? null : quality.voxel_volume_mm3 * result.voxel_count / 1000, 1)} cm³</span><span>Labelmap: {n(result.volume_cm3, 1)} cm³</span></div>
               </Metric>
               <Metric label="SURFACE AREA" value={n(quality?.surface_area_cm2)} unit="cm²" code="ISO-SURF">
                 <div><span>Faces: {result.mesh.face_count.toLocaleString()}</span><span>Vertices: {result.mesh.vertex_count.toLocaleString()}</span></div>
