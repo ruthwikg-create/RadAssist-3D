@@ -359,6 +359,7 @@ export default function ScanWorkspace() {
   const [showSettings, setShowSettings] = useState(false);
   const [compactWorkspace, setCompactWorkspace] = useState(false);
   const [showInspector, setShowInspector] = useState(true);
+  const [showTelemetry, setShowTelemetry] = useState(true);
 
   const [protectedVolumeUrl, setProtectedVolumeUrl] =
     useState<string | null>(null);
@@ -817,7 +818,7 @@ export default function ScanWorkspace() {
         : "warn";
 
   return (
-    <div className={`ra-app ${compactWorkspace ? "ra-compact-workspace" : ""} ${showInspector ? "" : "ra-inspector-hidden"}`}>
+    <div className={`ra-app ${compactWorkspace ? "ra-compact-workspace" : ""} ${showInspector ? "" : "ra-inspector-hidden"} ${showTelemetry ? "" : "ra-telemetry-hidden"}`}>
       <header className="ra-topbar">
         <div className="ra-brand">
           <div
@@ -1008,7 +1009,8 @@ export default function ScanWorkspace() {
           </div>
           <label><input type="checkbox" checked={compactWorkspace} onChange={(event) => setCompactWorkspace(event.target.checked)} /> Compact workspace</label>
           <label><input type="checkbox" checked={showInspector} onChange={(event) => setShowInspector(event.target.checked)} /> Show quantification inspector</label>
-          <button type="button" onClick={() => { setCompactWorkspace(false); setShowInspector(true); }}>Reset view</button>
+          <label><input type="checkbox" checked={showTelemetry} onChange={(event) => setShowTelemetry(event.target.checked)} /> Show telemetry bar</label>
+          <button type="button" onClick={() => { setCompactWorkspace(false); setShowInspector(true); setShowTelemetry(true); }}>Reset view</button>
         </section>
       )}
 
@@ -1963,6 +1965,20 @@ export default function ScanWorkspace() {
             </footer>
           </div>
         </main>
+      <div className="ra-telemetry-bar" aria-label="Research workstation telemetry">
+        <div className="ra-telemetry-left">
+          <span className="ra-telemetry-item ra-telemetry-live"><strong>WORKSTATION</strong> LIVE</span>
+          <span className="ra-telemetry-item"><strong>MODE</strong> {result ? "ANALYSIS" : "READY"}</span>
+          <span className="ra-telemetry-item"><strong>MODALITY</strong> {result?.modality ?? "—"}</span>
+          <span className="ra-telemetry-item"><strong>DEVICE</strong> {backend?.device ?? "OFFLINE"}</span>
+          <span className="ra-telemetry-item"><strong>AI</strong> {loadedModelCount}/3</span>
+        </div>
+        <div className="ra-telemetry-right">
+          <span className="ra-telemetry-item"><strong>VOXELS</strong> {result?.voxel_count?.toLocaleString() ?? "—"}</span>
+          <span className="ra-telemetry-item"><strong>QA</strong> {result?.measurement_quality?.status ?? "—"}</span>
+          <span className="ra-telemetry-item"><strong>API</strong> {API_BASE_URL}</span>
+        </div>
+      </div>
       </div>
     </div>
   );

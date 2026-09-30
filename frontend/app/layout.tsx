@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "@fontsource-variable/figtree";
 import "@fontsource-variable/noto-sans";
 import "./globals.css";
+import "./workstation-reference.css";
 
 export const metadata: Metadata = {
   title: "RadAssist 3D — AI-Assisted Quantitative Medical Imaging",
