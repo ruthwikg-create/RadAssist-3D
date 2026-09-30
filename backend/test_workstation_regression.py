@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 import SimpleITK as sitk
@@ -8,9 +10,13 @@ import SimpleITK as sitk
 try:
     from backend.multimodel_engine import _largest_component_per_label, _smooth_mesh
     from backend.pipeline import MeshData, _mesh_geometry_metrics, _physical_mesh_from_mask
+    from backend.engineering import build_input_manifest
+    from backend.case_store import case_dir
 except ModuleNotFoundError:
     from multimodel_engine import _largest_component_per_label, _smooth_mesh
     from pipeline import MeshData, _mesh_geometry_metrics, _physical_mesh_from_mask
+    from engineering import build_input_manifest
+    from case_store import case_dir
 
 
 class WorkstationRegressionTests(unittest.TestCase):
@@ -71,6 +77,21 @@ class WorkstationRegressionTests(unittest.TestCase):
             np.asarray([4.0, 6.0, 8.0]),
             atol=0.01,
         )
+
+    def test_input_manifest_hashes_without_source_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "patient-name.dcm"
+            path.write_bytes(b"radassist-test")
+            manifest = build_input_manifest([path])
+            self.assertEqual(manifest[0]["index"], 0)
+            self.assertEqual(manifest[0]["size_bytes"], 14)
+            self.assertNotIn("patient-name.dcm", manifest[0].values())
+
+    def test_case_identifier_rejects_path_traversal(self) -> None:
+        with self.assertRaises(ValueError):
+            case_dir("../outside")
+        with self.assertRaises(ValueError):
+            case_dir("case/../../outside")
 
 
 if __name__ == "__main__":
