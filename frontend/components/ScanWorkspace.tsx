@@ -724,7 +724,7 @@ export default function ScanWorkspace() {
               </span>
 
               <span className="ra-build-tag">
-                FINAL · VERIFIED
+                RESEARCH · QA
               </span>
             </div>
 
@@ -1315,45 +1315,32 @@ export default function ScanWorkspace() {
                   </div>
 
                   <div className="ra-eyebrow">
-                    Multimodel medical
-                    imaging
-                    workstation
+                    AI-POWERED MEDICAL IMAGING WORKSTATION
                   </div>
 
                   <h1 className="ra-empty-title ra-heading">
-                    Analyze Spleen CT,
-                    Heart MRI, or
-                    Prostate MRI.
+                    From Medical Scans
+                    to Interactive 3D Insight.
                   </h1>
 
                   <p className="ra-empty-copy">
-                    Select the
-                    anatomy-specific
-                    research model, import
-                    a NIfTI volume or DICOM
-                    study, run
-                    model-specific
-                    preprocessing and
-                    segmentation, inspect
-                    the synchronized MPR
-                    planes, review the
-                    extracted 3D surface,
-                    and inspect
-                    quantitative
-                    measurements and
-                    provenance in one
-                    focused environment.
+                    Import CT or MRI studies in NIfTI or DICOM,
+                    run anatomy-specific AI segmentation,
+                    synchronize MPR with interactive 3D anatomy,
+                    inspect quantitative measurements and QA,
+                    and generate reproducible research reports
+                    with model and input provenance.
                   </p>
 
                   <div className="ra-empty-pills">
                     {[
-                      "NIfTI",
-                      "DICOM",
-                      "Spleen CT",
-                      "Heart MRI",
-                      "Prostate MRI",
-                      "MPR",
-                      "3D surface",
+                      "CT + MRI",
+                      "DICOM + NIfTI",
+                      "AI segmentation",
+                      "MPR + 3D",
+                      "Quantitative QA",
+                      "Provenance",
+                      "Structured reports",
                     ].map(
                       (item) => (
                         <span
