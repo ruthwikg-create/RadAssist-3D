@@ -730,7 +730,7 @@ textarea:focus-visible {
 
 .ra-case-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.58fr) minmax(350px, 0.58fr);
+  grid-template-columns: minmax(0, 1.72fr) minmax(300px, 0.48fr);
   align-items: start;
   gap: 12px;
 }
