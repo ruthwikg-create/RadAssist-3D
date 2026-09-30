@@ -936,6 +936,15 @@ textarea:focus-visible {
   color: #d6ba84;
 }
 
+.ra-compare-card {
+  padding: 13px;
+  border: 1px solid rgba(114, 215, 255, 0.12);
+  border-radius: 14px;
+  background:
+    radial-gradient(18rem 9rem at 100% 0%, rgba(114, 215, 255, 0.05), transparent 72%),
+    rgba(255,255,255,0.018);
+}
+
 .ra-advanced-card {
   display: grid;
   gap: 11px;
