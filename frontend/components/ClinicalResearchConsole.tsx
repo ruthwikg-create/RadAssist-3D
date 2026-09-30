@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   Archive,
   BarChart3,
   Database,
