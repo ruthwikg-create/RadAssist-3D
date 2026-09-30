@@ -39,7 +39,7 @@ _configured_candidate = (
 
 MODEL_PATH = (
     _configured_candidate
-    if _configured_candidate is not None and _configured_candidate.exists()
+    if _configured_candidate is not None and _configured_candidate.is_file()
     else next(
         (
             candidate
