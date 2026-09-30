@@ -403,6 +403,7 @@ export async function getCase(
       `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseId)}`,
       {
         cache: "no-store",
+        headers: authHeaders(),
       },
     );
 
@@ -432,6 +433,7 @@ export async function listCases(): Promise<
       `${API_BASE_URL}/api/v1/cases`,
       {
         cache: "no-store",
+        headers: authHeaders(),
       },
     );
 
@@ -454,6 +456,7 @@ export async function deleteCase(
       `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseId)}`,
       {
         method: "DELETE",
+        headers: authHeaders(),
       },
     );
 
@@ -509,6 +512,7 @@ export async function downloadApiFile(
       absoluteUrl(path),
       {
         cache: "no-store",
+        headers: authHeaders(),
       },
     );
 
