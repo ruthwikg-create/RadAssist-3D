@@ -29,6 +29,7 @@ import Three3DMeshViewer from "./Three3DMeshViewer";
 import MetricsPanel from "./MetricsPanel";
 import AdvancedAnalyticsPanel from "./AdvancedAnalyticsPanel";
 import CaseComparisonPanel from "./CaseComparisonPanel";
+import ResearchAnalyticsPanel from "./ResearchAnalyticsPanel";
 import ViewerErrorBoundary from "./ViewerErrorBoundary";
 
 import type {
@@ -352,6 +353,12 @@ export default function ScanWorkspace() {
   const [comparison, setComparison] =
     useState<CaseResult | null>(null);
 
+  const [activeSection, setActiveSection] =
+    useState<"mpr" | "surface3d" | "metrics" | "qa" | "research">("mpr");
+  const [showSettings, setShowSettings] = useState(false);
+  const [compactWorkspace, setCompactWorkspace] = useState(false);
+  const [showInspector, setShowInspector] = useState(true);
+
   const [protectedVolumeUrl, setProtectedVolumeUrl] =
     useState<string | null>(null);
 
@@ -450,6 +457,23 @@ export default function ScanWorkspace() {
       setProtectedVolumeUrl(null);
     };
   }, [result]);
+
+  useEffect(() => {
+    const ids = ["mpr", "surface3d", "metrics", "qa", "research"];
+    const elements = ids.map((id) => document.getElementById(id)).filter(Boolean) as HTMLElement[];
+    if (!elements.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (visible?.target?.id) setActiveSection(visible.target.id as typeof activeSection);
+    }, { rootMargin: "-18% 0px -62% 0px", threshold: [0.15, 0.35, 0.6] });
+    elements.forEach((element) => observer.observe(element));
+    return () => observer.disconnect();
+  }, [result]);
+
+  function jumpToSection(id: typeof activeSection) {
+    setActiveSection(id);
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   useEffect(() => {
     let disposed = false;
@@ -792,7 +816,7 @@ export default function ScanWorkspace() {
         : "warn";
 
   return (
-    <div className="ra-app">
+    <div className={`ra-app ${compactWorkspace ? "ra-compact-workspace" : ""} ${showInspector ? "" : "ra-inspector-hidden"}`}>
       <header className="ra-topbar">
         <div className="ra-brand">
           <div
@@ -938,50 +962,54 @@ export default function ScanWorkspace() {
         </div>
       </header>
 
-      <nav
-        className="ra-navbar"
-        aria-label="Workspace navigation"
-      >
+      <nav className="ra-navbar" aria-label="Workspace navigation">
         <div className="ra-navbar-group">
-          <a
-            href="#mpr"
-            className="ra-nav-link active"
-          >
-            <ScanLine size={13} />
-            MPR
-          </a>
-
-          <a
-            href="#surface3d"
-            className="ra-nav-link"
-          >
-            <Database size={13} />
-            3D Surface
-          </a>
-
-          <a
-            href="#metrics"
-            className="ra-nav-link"
-          >
-            <Activity size={13} />
-            Quantification
-          </a>
-
-          <a
-            href="#qa"
-            className="ra-nav-link"
-          >
-            <ShieldCheck size={13} />
-            QA & Provenance
-          </a>
+          {([
+            ["mpr", "MPR", ScanLine],
+            ["surface3d", "3D Surface", Database],
+            ["metrics", "Quantification", Activity],
+            ["qa", "QA & Provenance", ShieldCheck],
+            ["research", "Research Console", Microscope],
+          ] as const).map(([id, label, Icon]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => jumpToSection(id)}
+              className={`ra-nav-link ${activeSection === id ? "active" : ""}`}
+              aria-current={activeSection === id ? "page" : undefined}
+            >
+              <Icon size={13} />
+              {label}
+            </button>
+          ))}
         </div>
-
-        <div className="ra-navbar-hint">
-          Keyboard: ←→ slices ·
-          W/L · pan · zoom · Esc
-          exits fullscreen
+        <div className="ra-navbar-actions">
+          <span className="ra-navbar-hint">Live backend · 5 s health refresh</span>
+          <button
+            type="button"
+            className={`ra-nav-settings ${showSettings ? "active" : ""}`}
+            onClick={() => setShowSettings((value) => !value)}
+            aria-expanded={showSettings}
+            aria-label="Workspace settings"
+          >
+            <SlidersHorizontal size={13} />
+            Settings
+          </button>
         </div>
       </nav>
+
+      {showSettings && (
+        <section className="ra-settings-drawer" aria-label="Workspace settings">
+          <div>
+            <div className="ra-section-label">Workspace controls</div>
+            <strong>Research display settings</strong>
+            <span>UI-only preferences. Imaging inference and stored results are unchanged.</span>
+          </div>
+          <label><input type="checkbox" checked={compactWorkspace} onChange={(event) => setCompactWorkspace(event.target.checked)} /> Compact workspace</label>
+          <label><input type="checkbox" checked={showInspector} onChange={(event) => setShowInspector(event.target.checked)} /> Show quantification inspector</label>
+          <button type="button" onClick={() => { setCompactWorkspace(false); setShowInspector(true); }}>Reset view</button>
+        </section>
+      )}
 
       <div className="ra-layout">
         <aside className="ra-sidebar">
@@ -1894,6 +1922,8 @@ export default function ScanWorkspace() {
                 </aside>
               </section>
             )}
+
+            <ResearchAnalyticsPanel result={result} />
 
             <footer className="ra-footer">
               <div className="flex items-center gap-2">
