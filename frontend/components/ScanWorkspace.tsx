@@ -1394,19 +1394,19 @@ export default function ScanWorkspace() {
                   </div>
 
                   <div className="ra-eyebrow">
-                    AI-POWERED MEDICAL IMAGING WORKSTATION
+                    AI-ASSISTED · QUANTITATIVE · RESEARCH IMAGING
                   </div>
 
                   <h1 className="ra-empty-title ra-heading">
-                    From Medical Images
-                    to Quantitative 3D Analysis.
+                    AI-Assisted Quantitative
+                    <br />
+                    Medical Imaging.
                   </h1>
 
                   <p className="ra-empty-copy">
-                    Import CT or MRI studies in DICOM or NIfTI, run anatomy-specific
-                    AI segmentation, synchronize multiplanar views with 3D anatomy,
-                    quantify structures, inspect segmentation QA, and export
-                    reproducible research results with model and input provenance.
+                    Analyze CT and MRI studies with anatomy-specific AI segmentation,
+                    synchronized MPR and 3D reconstruction, quantitative geometry,
+                    segmentation QA, provenance, and standards-aware research export.
                   </p>
 
                   <div className="ra-empty-pills">
