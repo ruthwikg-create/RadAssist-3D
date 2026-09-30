@@ -11,18 +11,33 @@ from monai.inferers import SlidingWindowInferer
 from monai.networks.nets import SegResNet, UNet
 
 
+BACKEND_DIR = Path(__file__).resolve().parent
+REPO_DIR = BACKEND_DIR.parent
+
 DEFAULT_MODEL_PATH = (
-    Path(__file__).resolve().parent
+    BACKEND_DIR
     / "models"
     / "spleen_unet_model.pt"
+)
+
+TRAINED_MODEL_PATHS = (
+    BACKEND_DIR / "models" / "spleen_segresnet.pth",
+    REPO_DIR / "checkpoints" / "spleen_segresnet.pth",
+    REPO_DIR / "model_training" / "checkpoints" / "spleen_segresnet.pth",
 )
 
 _configured_model_path = os.environ.get("RADASSIST_MODEL_PATH")
 if _configured_model_path:
     MODEL_PATH = Path(_configured_model_path)
 else:
-    _trained_model_path = DEFAULT_MODEL_PATH.with_name("spleen_segresnet.pth")
-    MODEL_PATH = DEFAULT_MODEL_PATH if DEFAULT_MODEL_PATH.exists() else _trained_model_path
+    MODEL_PATH = next(
+        (
+            candidate
+            for candidate in (DEFAULT_MODEL_PATH, *TRAINED_MODEL_PATHS)
+            if candidate.exists()
+        ),
+        TRAINED_MODEL_PATHS[0],
+    )
 
 
 class SpleenUNetAdapter:
