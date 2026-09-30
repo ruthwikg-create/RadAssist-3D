@@ -884,7 +884,19 @@ class RadAssistInferenceEngine:
         original_dimensions = [int(v) for v in original_ct.GetSize()]
 
         canonical = canonicalize_ct(original_ct)
-        resampled = resample_image(canonical, target_spacing=TARGET_SPACING_MM, interpolator=sitk.sitkLinear, pixel_id=sitk.sitkFloat32)
+        model_spacing = tuple(
+            float(v)
+            for v in self.model.config.get(
+                "required_spacing_mm",
+                TARGET_SPACING_MM,
+            )
+        )
+        resampled = resample_image(
+            canonical,
+            target_spacing=model_spacing,
+            interpolator=sitk.sitkLinear,
+            pixel_id=sitk.sitkFloat32,
+        )
         # The checkpoint-aware adapter owns intensity preprocessing so runtime
         # preprocessing cannot silently diverge from the loaded model artifact.
         with self.model.inference_lock:
