@@ -66,6 +66,14 @@ class SpleenUNetAdapter:
             else "cpu"
         )
 
+        checkpoint = torch.load(
+            self.checkpoint_path,
+            map_location="cpu",
+            weights_only=True,
+        )
+        if not isinstance(checkpoint, dict):
+            raise ValueError("Checkpoint must deserialize to a mapping.")
+
         self.checkpoint = checkpoint
 
         if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
@@ -121,9 +129,7 @@ class SpleenUNetAdapter:
         }
         if self.device.type == "cuda":
             inferer_kwargs.update(sw_device=self.device, device=torch.device("cpu"))
-        self.inferer = SlidingWindowInferer(**inferer_kwargs),
-            overlap=0.5,
-        )
+        self.inferer = SlidingWindowInferer(**inferer_kwargs)
 
         self.checkpoint_sha256 = (
             self._sha256(
@@ -216,11 +222,35 @@ class SpleenUNetAdapter:
             .astype(np.float32)
         )
 
+    def _prepare_intensity(
+        self,
+        volume: np.ndarray,
+        already_scaled: bool,
+    ) -> np.ndarray:
+        volume = np.asarray(volume, dtype=np.float32)
+
+        if not already_scaled:
+            volume = self.scale_ct_intensity(volume)
+
+        if not getattr(self, "NORMALIZE_NONZERO", False):
+            return volume.astype(np.float32, copy=False)
+
+        nonzero = volume[np.isfinite(volume) & (volume != 0)]
+        if nonzero.size == 0:
+            return np.zeros_like(volume, dtype=np.float32)
+
+        mean = float(nonzero.mean())
+        std = float(nonzero.std())
+        output = volume - mean if std <= 1e-8 else (volume - mean) / std
+        output = np.where(np.isfinite(output), output, 0.0)
+        output = np.where(volume == 0, 0.0, output)
+        return output.astype(np.float32, copy=False)
+
     @torch.inference_mode()
     def predict(
         self,
         volume: np.ndarray,
-        already_scaled: bool = True,
+        already_scaled: bool = False,
     ) -> np.ndarray:
         volume = np.asarray(
             volume,
@@ -233,12 +263,10 @@ class SpleenUNetAdapter:
                 f"got shape {volume.shape}"
             )
 
-        if not already_scaled:
-            volume = (
-                self.scale_ct_intensity(
-                    volume
-                )
-            )
+        volume = self._prepare_intensity(
+            volume,
+            already_scaled=already_scaled,
+        )
 
         logits = self.predict_logits(
             volume
