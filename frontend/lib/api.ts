@@ -476,6 +476,10 @@ export function caseBundleUrl(
   return `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseId)}/bundle`;
 }
 
+export function caseReportUrl(caseId: string) {
+  return `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseId)}/report`;
+}
+
 export async function downloadApiFile(
   path: string,
   filename: string,
