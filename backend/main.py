@@ -42,6 +42,7 @@ try:
     from .prostate_model_adapter import ProstateMRIAdapter
     from .multimodel_engine import MultiModelInferenceEngine
     from .engineering import append_audit_event, build_input_manifest, build_provenance, validate_input_contract, write_report_bundle
+    from .dicom_export import export_dicom_seg_and_sr
 except ImportError:
     from case_store import (
         case_dir,
@@ -62,6 +63,7 @@ except ImportError:
     from prostate_model_adapter import ProstateMRIAdapter
     from multimodel_engine import MultiModelInferenceEngine
     from engineering import append_audit_event, build_input_manifest, build_provenance, validate_input_contract, write_report_bundle
+    from dicom_export import export_dicom_seg_and_sr
 
 
 logging.basicConfig(
@@ -874,6 +876,28 @@ async def get_case_bundle(
     )
 
 
+@app.get("/api/v1/cases/{case_id}/dicom-seg")
+async def get_case_dicom_seg(case_id: str) -> FileResponse:
+    try:
+        path = _absolute_case_file(case_id, "radassist_segmentation.dcm")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="DICOM SEG is not available for this case.")
+    return FileResponse(path, media_type="application/dicom", filename="radassist_segmentation.dcm")
+
+
+@app.get("/api/v1/cases/{case_id}/dicom-sr")
+async def get_case_dicom_sr(case_id: str) -> FileResponse:
+    try:
+        path = _absolute_case_file(case_id, "radassist_measurements_sr.dcm")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="DICOM SR is not available for this case.")
+    return FileResponse(path, media_type="application/dicom", filename="radassist_measurements_sr.dcm")
+
+
 @app.get("/api/v1/cases/{case_id}/report")
 async def get_case_report(case_id: str) -> FileResponse:
     try:
@@ -1142,6 +1166,25 @@ async def segment(
             result_payload["dicom_seg_result"] = provenance_record["dicom_seg"]
             result_payload["dicom_sr_result"] = provenance_record["dicom_sr"]
             result_payload["uncertainty_status"] = provenance_record["structured_measurements"]["uncertainty_status"]
+
+            # Generate actual DICOM SEG/SR only when authoritative DICOM source
+            # images are present. NIfTI-only studies retain architecture metadata.
+            try:
+                result_payload["dicom_export"] = await run_in_threadpool(
+                    export_dicom_seg_and_sr,
+                    input_paths=input_paths,
+                    extraction_root=extraction_root,
+                    mask_path=case_path / "segmentation_mask.nii.gz",
+                    output_directory=case_path,
+                    target=target,
+                    result=result_payload,
+                )
+            except Exception as export_error:
+                logger.exception("DICOM export failed for %s", case_id)
+                result_payload["dicom_export"] = {
+                    "status": "FAILED",
+                    "reason": str(export_error),
+                }
 
             write_report_bundle(case_path, result_payload)
             append_audit_event(
