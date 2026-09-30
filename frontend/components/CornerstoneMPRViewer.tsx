@@ -27,7 +27,7 @@ import {
   BidirectionalTool,
 } from "@cornerstonejs/tools";
 import type { Types as CSTypes } from "@cornerstonejs/core";
-import { Maximize2, Minus, Plus, RotateCcw, X } from "lucide-react";
+import { Camera, Maximize2, Minus, Plus, RotateCcw, X } from "lucide-react";
 import DemoMPRViewer from "./DemoMPRViewer";
 
 let initPromise: Promise<void> | null = null;
@@ -104,6 +104,9 @@ export default function CornerstoneMPRViewer({
   const [fullscreen, setFullscreen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<"wl" | "crosshair" | "length" | "bidirectional">("wl");
+  const [inverted, setInverted] = useState(false);
+  const [autoVoi, setAutoVoi] = useState(true);
+  const [captureStatus, setCaptureStatus] = useState<string | null>(null);
 
   useEffect(() => {
     // Keep this guard inside the effect so all hooks remain unconditional.
@@ -263,6 +266,37 @@ export default function CornerstoneMPRViewer({
         if (disposed) return;
 
         await setVolumesForViewports(renderingEngine, [{ volumeId }], viewportIds, true);
+
+        // Establish a useful starting VOI from the actual source volume so
+        // native MRI/CT intensities are visible without relying on a fixed
+        // HU-like default range. The calculation samples the loaded scalar
+        // buffer to keep startup cost bounded for large studies.
+        let initialLevel = level;
+        let initialWidth = width;
+        try {
+          const scalarData = (volume as CSTypes.IImageVolume & { scalarData?: ArrayLike<number> }).scalarData;
+          if (scalarData && scalarData.length) {
+            const sampleCount = Math.min(120000, scalarData.length);
+            const stride = Math.max(1, Math.floor(scalarData.length / sampleCount));
+            const sample: number[] = [];
+            for (let index = 0; index < scalarData.length && sample.length < sampleCount; index += stride) {
+              const value = Number(scalarData[index]);
+              if (Number.isFinite(value)) sample.push(value);
+            }
+            sample.sort((a, b) => a - b);
+            if (sample.length >= 8) {
+              const q05 = sample[Math.floor((sample.length - 1) * 0.05)];
+              const q95 = sample[Math.floor((sample.length - 1) * 0.95)];
+              const span = Math.max(1, q95 - q05);
+              initialLevel = (q05 + q95) / 2;
+              initialWidth = span;
+              setLevel(initialLevel);
+              setWidth(initialWidth);
+            }
+          }
+        } catch {
+          // Keep the safe UI defaults if the scalar buffer is unavailable.
+        }
         if (disposed) return;
 
         // Recompute the camera independently for every orientation. Without an
@@ -308,7 +342,10 @@ export default function CornerstoneMPRViewer({
         toolGroupIdRef.current = toolGroupId;
         toolGroupRef.current = toolGroup;
 
-        setAllVoi(nextViewports, level, width);
+        setAllVoi(nextViewports, initialLevel, initialWidth);
+        nextViewports.forEach((viewport) => {
+          try { viewport.setProperties({ invert: inverted }); } catch {}
+        });
         installWheelNavigation();
         installVoiSync();
         const scrollTotals = nextViewports.map((viewport) => {
@@ -425,6 +462,19 @@ export default function CornerstoneMPRViewer({
     });
   }, [level, width, isDemo]);
 
+
+  useEffect(() => {
+    if (isDemo) return;
+    viewportsRef.current.forEach((viewport) => {
+      try {
+        viewport.setProperties({ invert: inverted });
+        viewport.render();
+      } catch {
+        // Ignore transient viewport teardown.
+      }
+    });
+  }, [inverted, isDemo]);
+
   useEffect(() => {
     if (!fullscreen) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -443,6 +493,51 @@ export default function CornerstoneMPRViewer({
     ["Sagittal", sliceIndexes[1], sliceTotals[1]],
     ["Coronal", sliceIndexes[2], sliceTotals[2]],
   ] as const;
+
+
+  const captureMprPng = () => {
+    try {
+      const panels = [
+        { ref: axialRef, title: "AXIAL [Z]" },
+        { ref: sagittalRef, title: "SAGITTAL [X]" },
+        { ref: coronalRef, title: "CORONAL [Y]" },
+      ];
+      const canvases = panels.map(({ ref }) => ref.current?.querySelector("canvas") as HTMLCanvasElement | null);
+      if (canvases.some((canvas) => !canvas)) throw new Error("MPR canvases are not ready.");
+      const panelWidth = Math.max(...canvases.map((canvas) => canvas!.width));
+      const panelHeight = Math.max(...canvases.map((canvas) => canvas!.height));
+      const headerHeight = 56;
+      const footerHeight = 40;
+      const gap = 8;
+      const output = document.createElement("canvas");
+      output.width = panelWidth * 3 + gap * 2;
+      output.height = headerHeight + panelHeight + footerHeight;
+      const ctx = output.getContext("2d");
+      if (!ctx) throw new Error("Unable to create PNG capture canvas.");
+      ctx.fillStyle = "#07131a";
+      ctx.fillRect(0, 0, output.width, output.height);
+      ctx.font = "600 20px 'JetBrains Mono', monospace";
+      ctx.fillStyle = "#45deed";
+      panels.forEach(({ title }, index) => {
+        const x = index * (panelWidth + gap);
+        ctx.fillText(title, x + 12, 34);
+        ctx.strokeStyle = "#00c2d1";
+        ctx.strokeRect(x, headerHeight, panelWidth, panelHeight);
+        ctx.drawImage(canvases[index]!, x, headerHeight, panelWidth, panelHeight);
+      });
+      ctx.fillStyle = "#bbc9cb";
+      ctx.font = "12px 'JetBrains Mono', monospace";
+      ctx.fillText(`W/L ${Math.round(width)} / ${Math.round(level)} · ${inverted ? "INVERTED" : "NORMAL"} · RADASSIST 3D`, 12, output.height - 15);
+      const link = document.createElement("a");
+      link.href = output.toDataURL("image/png", 1);
+      link.download = `radassist-${caseId}-mpr.png`;
+      link.click();
+      setCaptureStatus("PNG exported");
+      window.setTimeout(() => setCaptureStatus(null), 1600);
+    } catch (caught) {
+      setCaptureStatus(caught instanceof Error ? caught.message : "PNG export failed.");
+    }
+  };
 
   return (
     <section
@@ -474,17 +569,20 @@ export default function CornerstoneMPRViewer({
           </div>
           <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-2 py-1.5">
             <span className="text-[10px] text-slate-500">W</span>
-            <button type="button" aria-label="Decrease window width" onClick={() => setWidth((v) => Math.max(10, v - 25))} className="ra-icon-btn"><Minus size={12} /></button>
+            <button type="button" aria-label="Decrease window width" onClick={() => { setAutoVoi(false); setWidth((v) => Math.max(10, v - 25)); }} className="ra-icon-btn"><Minus size={12} /></button>
             <span className="w-12 text-center font-mono text-[10px] text-slate-200">{Math.round(width)}</span>
-            <button type="button" aria-label="Increase window width" onClick={() => setWidth((v) => Math.min(4000, v + 25))} className="ra-icon-btn"><Plus size={12} /></button>
+            <button type="button" aria-label="Increase window width" onClick={() => { setAutoVoi(false); setWidth((v) => Math.min(4000, v + 25)); }} className="ra-icon-btn"><Plus size={12} /></button>
           </div>
           <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-2 py-1.5">
             <span className="text-[10px] text-slate-500">L</span>
-            <button type="button" aria-label="Decrease window level" onClick={() => setLevel((v) => v - 10)} className="ra-icon-btn"><Minus size={12} /></button>
+            <button type="button" aria-label="Decrease window level" onClick={() => { setAutoVoi(false); setLevel((v) => v - 10); }} className="ra-icon-btn"><Minus size={12} /></button>
             <span className="w-12 text-center font-mono text-[10px] text-slate-200">{Math.round(level)}</span>
-            <button type="button" aria-label="Increase window level" onClick={() => setLevel((v) => v + 10)} className="ra-icon-btn"><Plus size={12} /></button>
+            <button type="button" aria-label="Increase window level" onClick={() => { setAutoVoi(false); setLevel((v) => v + 10); }} className="ra-icon-btn"><Plus size={12} /></button>
           </div>
-          <button type="button" title="Reset W/L" aria-label="Reset W/L" className="ra-icon-btn" onClick={() => { setWidth(400); setLevel(50); }}><RotateCcw size={13} /></button>
+          <button type="button" title="Auto contrast from source data" aria-label="Auto contrast from source data" className={`ra-icon-btn ${autoVoi ? "text-cyan-300 border-cyan-400/30" : ""}`} onClick={() => setAutoVoi((v) => !v)}>AUTO</button>
+          <button type="button" title="Invert grayscale (negative)" aria-label="Invert grayscale" className={`ra-icon-btn ${inverted ? "text-cyan-300 border-cyan-400/30" : ""}`} onClick={() => setInverted((v) => !v)}>INV</button>
+                    <button type="button" title="Reset W/L" aria-label="Reset W/L" className="ra-icon-btn" onClick={() => { setAutoVoi(false); setWidth(400); setLevel(50); }}><RotateCcw size={13} /></button>
+          <button type="button" title="Export high-resolution 3-panel MPR PNG" aria-label="Export high-resolution 3-panel MPR PNG" className="ra-icon-btn" onClick={captureMprPng}><Camera size={13} /></button>
           <button type="button" title="Fit images" aria-label="Fit images" className="ra-icon-btn" onClick={() => { viewportsRef.current.forEach((viewport) => { try { viewport.resetCamera({ resetPan: true, resetZoom: true, resetToCenter: true }); viewport.render(); } catch {} }); }}><span className="text-[9px] font-bold">FIT</span></button>
           <button type="button" title="Toggle full screen" aria-label="Toggle full screen" className="ra-icon-btn" onClick={() => setFullscreen((v) => !v)}>{fullscreen ? <X size={14} /> : <Maximize2 size={14} />}</button>
         </div>
@@ -507,7 +605,8 @@ export default function CornerstoneMPRViewer({
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 px-4 py-2 text-[9px] text-slate-500">
         <span className={error ? "text-rose-200" : "text-slate-500"}>{status}</span>
-        <span>W/L {Math.round(width)} / {Math.round(level)}</span>
+        <span>W/L {Math.round(width)} / {Math.round(level)} · {inverted ? "NEGATIVE" : "NORMAL"} · {autoVoi ? "AUTO VOI" : "MANUAL"}</span>
+        {captureStatus ? <span className="text-cyan-300">{captureStatus}</span> : null}
       </div>
       {error && (
         <div className="border-t border-rose-300/10 bg-rose-300/[0.04] px-4 py-2 text-[10px] text-rose-200">
