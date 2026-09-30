@@ -7,10 +7,10 @@ import SimpleITK as sitk
 
 try:
     from backend.multimodel_engine import _largest_component_per_label, _smooth_mesh
-    from backend.pipeline import MeshData, _mesh_geometry_metrics
+    from backend.pipeline import MeshData, _mesh_geometry_metrics, _physical_mesh_from_mask
 except ModuleNotFoundError:
     from multimodel_engine import _largest_component_per_label, _smooth_mesh
-    from pipeline import MeshData, _mesh_geometry_metrics
+    from pipeline import MeshData, _mesh_geometry_metrics, _physical_mesh_from_mask
 
 
 class WorkstationRegressionTests(unittest.TestCase):
@@ -53,8 +53,6 @@ class WorkstationRegressionTests(unittest.TestCase):
         self.assertEqual(smoothed.faces, mesh.faces)
 
     def test_physical_mesh_applies_spacing_once(self) -> None:
-        from backend.pipeline import _physical_mesh_from_mask
-
         array = np.zeros((8, 8, 8), dtype=np.uint8)
         array[2:4, 2:4, 2:4] = 1
         image = sitk.GetImageFromArray(array)
