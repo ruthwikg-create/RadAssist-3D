@@ -729,9 +729,7 @@ export default function ScanWorkspace() {
             </div>
 
             <div className="ra-brand-subtitle">
-              Multimodel segmentation ·
-              MPR · volumetrics · 3D
-              surfaces
+              Multimodal AI · MPR · 3D · quantitative QA
             </div>
           </div>
         </div>
@@ -1319,17 +1317,15 @@ export default function ScanWorkspace() {
                   </div>
 
                   <h1 className="ra-empty-title ra-heading">
-                    From Medical Scans
-                    to Interactive 3D Insight.
+                    From Medical Images
+                    to Quantitative 3D Analysis.
                   </h1>
 
                   <p className="ra-empty-copy">
-                    Import CT or MRI studies in NIfTI or DICOM,
-                    run anatomy-specific AI segmentation,
-                    synchronize MPR with interactive 3D anatomy,
-                    inspect quantitative measurements and QA,
-                    and generate reproducible research reports
-                    with model and input provenance.
+                    Import CT or MRI studies in DICOM or NIfTI, run anatomy-specific
+                    AI segmentation, synchronize multiplanar views with 3D anatomy,
+                    quantify structures, inspect segmentation QA, and export
+                    reproducible research results with model and input provenance.
                   </p>
 
                   <div className="ra-empty-pills">
@@ -1338,9 +1334,10 @@ export default function ScanWorkspace() {
                       "DICOM + NIfTI",
                       "AI segmentation",
                       "MPR + 3D",
-                      "Quantitative QA",
+                      "Measurements",
+                      "Segmentation QA",
+                      "DICOM export",
                       "Provenance",
-                      "Structured reports",
                     ].map(
                       (item) => (
                         <span
