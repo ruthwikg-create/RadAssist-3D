@@ -17,12 +17,12 @@ DEFAULT_MODEL_PATH = (
     / "spleen_unet_model.pt"
 )
 
-MODEL_PATH = Path(
-    os.environ.get(
-        "RADASSIST_MODEL_PATH",
-        str(DEFAULT_MODEL_PATH),
-    )
-)
+_configured_model_path = os.environ.get("RADASSIST_MODEL_PATH")
+if _configured_model_path:
+    MODEL_PATH = Path(_configured_model_path)
+else:
+    _trained_model_path = DEFAULT_MODEL_PATH.with_name("spleen_segresnet.pth")
+    MODEL_PATH = DEFAULT_MODEL_PATH if DEFAULT_MODEL_PATH.exists() else _trained_model_path
 
 
 class SpleenUNetAdapter:
