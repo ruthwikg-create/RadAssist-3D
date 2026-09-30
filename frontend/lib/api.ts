@@ -479,6 +479,14 @@ export function caseBundleUrl(
 export function caseReportUrl(caseId: string) {
   return `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseId)}/report`;
 }
+export function caseDicomSegUrl(caseId: string) {
+  return `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseId)}/dicom-seg`;
+}
+
+export function caseDicomSrUrl(caseId: string) {
+  return `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseId)}/dicom-sr`;
+}
+
 
 export async function downloadApiFile(
   path: string,
