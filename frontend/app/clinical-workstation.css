@@ -258,3 +258,18 @@ button{font:inherit}
 .cw-viewer-filter.cw-viewer-only-mpr .cw-viewer-stack{gap:7px}
 @media(max-width:1180px){.cw-clinical-grid{grid-template-columns:1fr}.cw-clinical-inspector{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.cw-clinical-inspector{grid-template-columns:1fr}}
+
+
+.cw-mpr-shell{border:1px solid var(--cw-line)!important;border-radius:3px!important;background:#07131a!important;box-shadow:none!important}
+.cw-mpr-toolbar{background:var(--cw-surface-low);border-bottom-color:var(--cw-line)!important}
+.cw-mpr-toolbar .ra-icon-btn{height:28px;min-width:30px;border-radius:2px}
+.cw-mpr-panel{aspect-ratio:1.03 / 1;min-height:360px;background:#03070a!important;border-color:var(--cw-line)!important;border-radius:2px!important}
+.cw-mpr-panel .cs-viewport{position:absolute;inset:0;background:#03070a!important}
+.cw-mpr-panel:before{content:"";position:absolute;inset:0;pointer-events:none;z-index:4;border:1px solid rgba(69,222,237,.08)}
+.cw-mpr-footer{background:var(--cw-surface-low)}
+@media(max-width:1250px){
+  .cw-mpr-panel{min-height:310px}
+}
+@media(max-width:850px){
+  .cw-mpr-panel{min-height:280px;aspect-ratio:1/1}
+}
