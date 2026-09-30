@@ -479,6 +479,22 @@ export function toPreviewUrl(
   return absoluteUrl(path);
 }
 
+export async function createAuthenticatedObjectUrl(path: string): Promise<string> {
+  const response = await fetch(absoluteUrl(path), {
+    cache: "no-store",
+    headers: authHeaders(),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(
+      body?.detail ?? `Protected artifact request failed (HTTP ${response.status}).`,
+    );
+  }
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
+
 export function caseMaskUrl(
   caseId: string,
 ) {
