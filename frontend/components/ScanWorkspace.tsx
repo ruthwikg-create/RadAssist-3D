@@ -37,6 +37,7 @@ import type {
 
 import {
   API_BASE_URL,
+  createAuthenticatedObjectUrl,
   caseBundleUrl,
   caseReportUrl,
   caseDicomSegUrl,
@@ -345,6 +346,9 @@ export default function ScanWorkspace() {
       null,
     );
 
+  const [protectedVolumeUrl, setProtectedVolumeUrl] =
+    useState<string | null>(null);
+
   const selectedModel =
     backend?.models?.[
       selectedTarget
@@ -403,6 +407,43 @@ export default function ScanWorkspace() {
       selectedTarget,
       selectedModel,
     ]);
+
+  useEffect(() => {
+    let disposed = false;
+    let objectUrl: string | null = null;
+
+    if (!result || result.is_demo || !result.preview.volume_url) {
+      setProtectedVolumeUrl(null);
+      return () => {};
+    }
+
+    void (async () => {
+      try {
+        const url = await createAuthenticatedObjectUrl(result.preview.volume_url);
+        objectUrl = url;
+        if (!disposed) {
+          setProtectedVolumeUrl(url);
+        } else {
+          URL.revokeObjectURL(url);
+        }
+      } catch (err) {
+        if (!disposed) {
+          setProtectedVolumeUrl(null);
+          setError(
+            err instanceof Error
+              ? `Protected imaging volume could not be loaded: ${err.message}`
+              : "Protected imaging volume could not be loaded.",
+          );
+        }
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      setProtectedVolumeUrl(null);
+    };
+  }, [result]);
 
   useEffect(() => {
     void (async () => {
@@ -1533,7 +1574,7 @@ export default function ScanWorkspace() {
                         <DemoMPRViewer />
                       ) : (
                         <CornerstoneMPRViewer
-                          volumeUrl={`${API_BASE_URL}${result.preview.volume_url}`}
+                          volumeUrl={protectedVolumeUrl ?? ""}
                           caseId={
                             result.request_id
                           }
