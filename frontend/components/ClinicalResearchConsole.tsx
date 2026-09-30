@@ -19,6 +19,7 @@ import {
   Box,
   XCircle,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import type { BackendHealth, CaseResult, CaseSummary } from "../lib/types";
 
 type Mode = "mpr" | "ai" | "research";
@@ -34,7 +35,7 @@ function statusTone(value: string) {
   return "bad";
 }
 
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <section className={`cw-card ${className}`}>{children}</section>;
 }
 
