@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      RADASSIST_MODEL_PATH: /app/models/spleen_unet_model.pt
+      RADASSIST_MODEL_PATH: ""
       RADASSIST_CASE_ROOT: /app/data/cases
       RADASSIST_CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
       RADASSIST_TRUSTED_HOSTS: localhost,127.0.0.1
@@ -20,6 +20,7 @@ services:
       RADASSIST_DEVICE: "auto"
     volumes:
       - ./backend/models:/app/models:ro
+      - ./model_training/checkpoints:/app/model_training/checkpoints:ro
       - ./backend/data/cases:/app/data/cases
     ports:
       - "8000:8000"
