@@ -287,8 +287,8 @@ export default function ClinicalResearchConsole({
               </Card>
               <Card>
                 <CardTitle icon={<RefreshCcw size={16} />} title="Reproducibility" meta="PROVENANCE" />
-                <div className="cw-dashboard-value">{result.provenance_record ? "TRACEABLE" : "REVIEW"}</div>
-                <div className="cw-dashboard-meta">Request: {result.request_id.slice(0, 16)} · Schema: {String(result.provenance_record?.schema_version ?? "—")}</div>
+                <div className="cw-dashboard-value">{result?.provenance_record ? "TRACEABLE" : "REVIEW"}</div>
+                <div className="cw-dashboard-meta">{result ? `Request: ${result.request_id.slice(0, 16)} · Schema: ${String(result.provenance_record?.schema_version ?? "—")}` : "No case provenance is available yet."}</div>
                 <div className="cw-dashboard-actions">
                   <button type="button" disabled={!result} onClick={onRefreshCase}>Refresh Case</button>
                   <button type="button" onClick={() => goToSection("export")}>Research Export</button>
@@ -311,7 +311,7 @@ export default function ClinicalResearchConsole({
               {history.length ? (
                 <div className="cw-study-list">
                   {history.map((item) => (
-                    <button key={item.case_id} type="button" className={`cw-study-row ${item.case_id === result.request_id ? "active" : ""}`} onClick={() => onOpenHistory(item)}>
+                    <button key={item.case_id} type="button" className={`cw-study-row ${item.case_id === result?.request_id ? "active" : ""}`} onClick={() => onOpenHistory(item)}>
                       <span><b>{item.target.toUpperCase()} · {item.modality}</b><small>{item.source_type} · {formatDate(item.stored_at)}</small></span>
                       <strong>{n(item.volume_cm3)} cm³</strong>
                       <em>{item.is_demo ? "DEMO" : "STORED"}</em>
@@ -376,7 +376,7 @@ export default function ClinicalResearchConsole({
                   <span>TOPOLOGY DIAGNOSTIC SUB-METRICS</span>
                   <div><b>Components:</b> {quality?.connected_components ?? "—"} <b>Largest:</b> {n(quality?.largest_component_fraction_pct, 1)}%</div>
                   <div><b>Boundary:</b> {quality?.touches_volume_boundary ? "Yes (Review)" : "No"} <b>Mask fraction:</b> {n(quality?.mask_fraction_pct, 1)}%</div>
-                  <div><b>Mesh volume:</b> {n(quality?.mesh_volume_cm3)} cm³ <b>Labelmap:</b> {n(result.volume_cm3)} cm³</div>
+                  <div><b>Mesh volume:</b> {n(quality?.mesh_volume_cm3)} cm³ <b>Labelmap:</b> {n(result!.volume_cm3)} cm³</div>
                 </div>
               </Card>
             </div>
@@ -391,17 +391,17 @@ export default function ClinicalResearchConsole({
               </div>
               <div className="cw-toolbar">
                 <button type="button" onClick={onRefreshCase}><RefreshCcw size={13} /> Re-validate QA Gates</button>
-                <button type="button" onClick={() => onDownload(`/api/v1/cases/${result.request_id}/report`, `radassist-${result.request_id}-report.json`)}><FileDown size={13} /> Generate Report</button>
-                <button type="button" className="primary" onClick={() => onDownload(`/api/v1/cases/${result.request_id}/bundle`, `radassist-${result.request_id}-research.zip`)}><Archive size={13} /> Export Research Bundle</button>
+                <button type="button" onClick={() => onDownload(`/api/v1/cases/${result!.request_id}/report`, `radassist-${result!.request_id}-report.json`)}><FileDown size={13} /> Generate Report</button>
+                <button type="button" className="primary" onClick={() => onDownload(`/api/v1/cases/${result!.request_id}/bundle`, `radassist-${result!.request_id}-research.zip`)}><Archive size={13} /> Export Research Bundle</button>
               </div>
             </div>
 
             <div className="cw-kpi-grid">
-              <Metric label="QUANTIFIED VOLUME" value={n(result.volume_cm3)} unit="cm³" code="VOI-01">
-                <div><span>Voxel: {n(quality?.voxel_volume_mm3 == null ? null : quality.voxel_volume_mm3 * result.voxel_count / 1000, 1)} cm³</span><span>Labelmap: {n(result.volume_cm3, 1)} cm³</span></div>
+              <Metric label="QUANTIFIED VOLUME" value={n(result!.volume_cm3)} unit="cm³" code="VOI-01">
+                <div><span>Voxel: {n(quality?.voxel_volume_mm3 == null ? null : quality.voxel_volume_mm3 * result!.voxel_count / 1000, 1)} cm³</span><span>Labelmap: {n(result!.volume_cm3, 1)} cm³</span></div>
               </Metric>
               <Metric label="SURFACE AREA" value={n(quality?.surface_area_cm2)} unit="cm²" code="ISO-SURF">
-                <div><span>Faces: {result.mesh.face_count.toLocaleString()}</span><span>Vertices: {result.mesh.vertex_count.toLocaleString()}</span></div>
+                <div><span>Faces: {result!.mesh.face_count.toLocaleString()}</span><span>Vertices: {result!.mesh.vertex_count.toLocaleString()}</span></div>
               </Metric>
               <Metric label="EQUIVALENT DIAMETER" value={n(quality?.equivalent_diameter_mm == null ? null : quality.equivalent_diameter_mm / 10, 2)} unit="cm" code="D-EQ">
                 <div><span>Sphericity Index: <b>{n(advanced?.sphericity, 2)}</b></span></div>
@@ -421,11 +421,11 @@ export default function ClinicalResearchConsole({
                       <span>-5%</span><span>-2%</span><strong>0.0% (NOMINAL)</strong><span>+2%</span><span>+5%</span>
                       <i style={{ left: `${Math.max(1, Math.min(99, 50 + (agreement ?? 0) * 10))}%` }} />
                     </div>
-                    <div className="cw-graph-foot"><span>Algorithm: Marching Cubes</span><b>Physical spacing preservation: {result.original_spacing_mm.every((v) => v > 0) ? "OPTIMAL" : "REVIEW"}</b></div>
+                    <div className="cw-graph-foot"><span>Algorithm: Marching Cubes</span><b>Physical spacing preservation: {result!.original_spacing_mm.every((v) => v > 0) ? "OPTIMAL" : "REVIEW"}</b></div>
                   </div>
 
                   <div className="cw-graph-block">
-                    <div className="cw-graph-head"><span className="dot blue" /> INTENSITY PROFILE <span>({result.modality === "MR" ? "Native MR signal distribution" : "Source intensity distribution"})</span><b>NON-CALIBRATED / SOURCE DOMAIN</b></div>
+                    <div className="cw-graph-head"><span className="dot blue" /> INTENSITY PROFILE <span>({result!.modality === "MR" ? "Native MR signal distribution" : "Source intensity distribution"})</span><b>NON-CALIBRATED / SOURCE DOMAIN</b></div>
                     <div className="cw-percentile-chart">
                       {percentileValues.map(([label, value]) => <div key={label} className={label === "MEDIAN" ? "median" : ""}><i style={{ height: value == null ? "8%" : `${20 + ((value - intensityMin) / intensitySpan) * 70}%` }} /><span>{label}</span></div>)}
                     </div>
@@ -435,7 +435,7 @@ export default function ClinicalResearchConsole({
                   </div>
 
                   <div className="cw-graph-block">
-                    <div className="cw-graph-head"><span className="dot green" /> SEGMENTATION LABEL COMPOSITION <b>TOTAL VOI: {result.voxel_count.toLocaleString()} VOXELS</b></div>
+                    <div className="cw-graph-head"><span className="dot green" /> SEGMENTATION LABEL COMPOSITION <b>TOTAL VOI: {result!.voxel_count.toLocaleString()} VOXELS</b></div>
                     <div className="cw-stackbar">
                       {labels.map((item, index) => <i key={item.label} style={{ width: `${Math.max(0, item.fraction_pct / Math.max(1, totalLabelPct)) * 100}%`, opacity: 0.45 + (index % 3) * 0.2 }} />)}
                     </div>
@@ -450,7 +450,7 @@ export default function ClinicalResearchConsole({
                     <div><span>Largest component fraction</span><b>{n(quality?.largest_component_fraction_pct, 1)}%</b><em className="good">Measured</em></div>
                     <div><span>Boundary contact</span><b>{quality?.touches_volume_boundary ? "Yes" : "No"}</b><em className={quality?.touches_volume_boundary ? "warn" : "good"}>{quality?.touches_volume_boundary ? "Review" : "PASS"}</em></div>
                     <div><span>Physical spacing matrix</span><b>{spacing} mm</b><em className="good">Preserved</em></div>
-                    <div><span>Mesh step / decimation</span><b>{result.mesh_step_size}</b><em className="good">Configured</em></div>
+                    <div><span>Mesh step / decimation</span><b>{result!.mesh_step_size}</b><em className="good">Configured</em></div>
                   </div>
                 </Card>
               </div>
@@ -471,13 +471,13 @@ export default function ClinicalResearchConsole({
                 <Card>
                   <CardTitle icon={<Terminal size={16} />} title="Reproducible Provenance Audit" meta="DETERMINISTIC PIPELINE" />
                   <div className="cw-timeline">
-                    <div><span>STUDY</span><b>Imported</b><small>{result.source_type} · {result.modality}</small></div>
+                    <div><span>STUDY</span><b>Imported</b><small>{result!.source_type} · {result!.modality}</small></div>
                     <div><span>GEOMETRY</span><b>Validated</b><small>{dimensions} · {spacing} mm [LPS]</small></div>
                     <div><span>AI MODEL</span><b>{model?.checkpoint_loaded ? "Loaded" : "Unavailable"}</b><small>{model?.architecture ?? "—"} · {model?.name ?? "—"}</small></div>
-                    <div><span>INFERENCE</span><b>Completed</b><small>Duration: {result.processing_seconds.toFixed(2)}s · Device: {device}</small></div>
+                    <div><span>INFERENCE</span><b>Completed</b><small>Duration: {result!.processing_seconds.toFixed(2)}s · Device: {device}</small></div>
                     <div><span>MORPHOLOGY</span><b>Calculated</b><small>Surface mesh extracted from segmentation</small></div>
-                    <div><span>3D MESH</span><b>Generated</b><small>Vertices: {result.mesh.vertex_count.toLocaleString()} · Faces: {result.mesh.face_count.toLocaleString()}</small></div>
-                    <div><span>QA</span><b>Executed</b><small>Schema: {String(result.provenance_record?.schema_version ?? "radassist-result-1.0")}</small></div>
+                    <div><span>3D MESH</span><b>Generated</b><small>Vertices: {result!.mesh.vertex_count.toLocaleString()} · Faces: {result!.mesh.face_count.toLocaleString()}</small></div>
+                    <div><span>QA</span><b>Executed</b><small>Schema: {String(result!.provenance_record?.schema_version ?? "radassist-result-1.0")}</small></div>
                   </div>
                 </Card>
               </div>
@@ -487,10 +487,10 @@ export default function ClinicalResearchConsole({
               <div id="cw-export" />
               <CardTitle icon={<Archive size={16} />} title="Clinical Export & Scientific Interoperability Dock" meta="DICOM PS3.3 / TID 1500 / NIFTI-1 / STL" />
               <div className="cw-export-grid">
-                <button type="button" onClick={() => onDownload(`/api/v1/cases/${result.request_id}/report`, `radassist-${result.request_id}-report.json`)}><FileDown size={22} /><b>Structured Clinical Report</b><span>Source-derived report, QA snapshot and provenance.</span><strong>Export Report</strong></button>
-                <button type="button" disabled={result.dicom_export?.status !== "GENERATED"} onClick={() => onDownload(`/api/v1/cases/${result.request_id}/dicom-seg`, "radassist-segmentation.dcm")}><Layers3 size={22} /><b>DICOM SEG Object</b><span>Generated when an authoritative DICOM source is available.</span><strong>Export .dcm</strong></button>
-                <button type="button" disabled={result.dicom_export?.status !== "GENERATED"} onClick={() => onDownload(`/api/v1/cases/${result.request_id}/dicom-sr`, "radassist-measurements-sr.dcm")}><FileDown size={22} /><b>DICOM SR (TID 1500)</b><span>Structured measurement report for research interoperability.</span><strong>Export TID 1500</strong></button>
-                <button type="button" onClick={() => onDownload(`/api/v1/cases/${result.request_id}/bundle`, `radassist-${result.request_id}-research.zip`)}><Download size={22} /><b>Full Research Bundle</b><span>JSON telemetry manifest + available case artifacts.</span><strong>Download .zip</strong></button>
+                <button type="button" onClick={() => onDownload(`/api/v1/cases/${result!.request_id}/report`, `radassist-${result!.request_id}-report.json`)}><FileDown size={22} /><b>Structured Clinical Report</b><span>Source-derived report, QA snapshot and provenance.</span><strong>Export Report</strong></button>
+                <button type="button" disabled={result!.dicom_export?.status !== "GENERATED"} onClick={() => onDownload(`/api/v1/cases/${result!.request_id}/dicom-seg`, "radassist-segmentation.dcm")}><Layers3 size={22} /><b>DICOM SEG Object</b><span>Generated when an authoritative DICOM source is available.</span><strong>Export .dcm</strong></button>
+                <button type="button" disabled={result!.dicom_export?.status !== "GENERATED"} onClick={() => onDownload(`/api/v1/cases/${result!.request_id}/dicom-sr`, "radassist-measurements-sr.dcm")}><FileDown size={22} /><b>DICOM SR (TID 1500)</b><span>Structured measurement report for research interoperability.</span><strong>Export TID 1500</strong></button>
+                <button type="button" onClick={() => onDownload(`/api/v1/cases/${result!.request_id}/bundle`, `radassist-${result!.request_id}-research.zip`)}><Download size={22} /><b>Full Research Bundle</b><span>JSON telemetry manifest + available case artifacts.</span><strong>Download .zip</strong></button>
               </div>
             </Card> : null}
           </>
@@ -506,10 +506,10 @@ export default function ClinicalResearchConsole({
             <Card className="cw-export">
               <CardTitle icon={<Archive size={16} />} title="Clinical Export & Scientific Interoperability Dock" meta="SOURCE-DERIVED ARTIFACTS" />
               <div className="cw-export-grid">
-                <button type="button" onClick={() => onDownload(`/api/v1/cases/${result.request_id}/report`, `radassist-${result.request_id}-report.json`)}><FileDown size={22} /><b>Structured Clinical Report</b><span>Source-derived report, QA snapshot and provenance.</span><strong>Export Report</strong></button>
-                <button type="button" disabled={result.dicom_export?.status !== "GENERATED"} onClick={() => onDownload(`/api/v1/cases/${result.request_id}/dicom-seg`, "radassist-segmentation.dcm")}><Layers3 size={22} /><b>DICOM SEG Object</b><span>Generated when an authoritative DICOM source is available.</span><strong>Export .dcm</strong></button>
-                <button type="button" disabled={result.dicom_export?.status !== "GENERATED"} onClick={() => onDownload(`/api/v1/cases/${result.request_id}/dicom-sr`, "radassist-measurements-sr.dcm")}><FileDown size={22} /><b>DICOM SR (TID 1500)</b><span>Structured measurement report for research interoperability.</span><strong>Export TID 1500</strong></button>
-                <button type="button" onClick={() => onDownload(`/api/v1/cases/${result.request_id}/bundle`, `radassist-${result.request_id}-research.zip`)}><Download size={22} /><b>Full Research Bundle</b><span>JSON telemetry manifest + available case artifacts.</span><strong>Download .zip</strong></button>
+                <button type="button" onClick={() => onDownload(`/api/v1/cases/${result!.request_id}/report`, `radassist-${result!.request_id}-report.json`)}><FileDown size={22} /><b>Structured Clinical Report</b><span>Source-derived report, QA snapshot and provenance.</span><strong>Export Report</strong></button>
+                <button type="button" disabled={result!.dicom_export?.status !== "GENERATED"} onClick={() => onDownload(`/api/v1/cases/${result!.request_id}/dicom-seg`, "radassist-segmentation.dcm")}><Layers3 size={22} /><b>DICOM SEG Object</b><span>Generated when an authoritative DICOM source is available.</span><strong>Export .dcm</strong></button>
+                <button type="button" disabled={result!.dicom_export?.status !== "GENERATED"} onClick={() => onDownload(`/api/v1/cases/${result!.request_id}/dicom-sr`, "radassist-measurements-sr.dcm")}><FileDown size={22} /><b>DICOM SR (TID 1500)</b><span>Structured measurement report for research interoperability.</span><strong>Export TID 1500</strong></button>
+                <button type="button" onClick={() => onDownload(`/api/v1/cases/${result!.request_id}/bundle`, `radassist-${result!.request_id}-research.zip`)}><Download size={22} /><b>Full Research Bundle</b><span>JSON telemetry manifest + available case artifacts.</span><strong>Download .zip</strong></button>
               </div>
             </Card>
           </div>
