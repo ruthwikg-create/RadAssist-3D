@@ -41,7 +41,7 @@ try:
     from .heart_model_adapter import CardiacVentricularAdapter
     from .prostate_model_adapter import ProstateMRIAdapter
     from .multimodel_engine import MultiModelInferenceEngine
-    from .engineering import append_audit_event, build_provenance, validate_input_contract, write_report_bundle
+    from .engineering import append_audit_event, build_input_manifest, build_provenance, validate_input_contract, write_report_bundle
 except ImportError:
     from case_store import (
         case_dir,
@@ -61,7 +61,7 @@ except ImportError:
     from heart_model_adapter import CardiacVentricularAdapter
     from prostate_model_adapter import ProstateMRIAdapter
     from multimodel_engine import MultiModelInferenceEngine
-    from engineering import append_audit_event, build_provenance, validate_input_contract, write_report_bundle
+    from engineering import append_audit_event, build_input_manifest, build_provenance, validate_input_contract, write_report_bundle
 
 
 logging.basicConfig(
@@ -1135,6 +1135,7 @@ async def segment(
 
             # Build deterministic structured result metadata before persistence.
             result_payload["input_validation"] = input_validation
+            result_payload["input_manifest"] = build_input_manifest(input_paths)
             provenance_record = build_provenance(result_payload)
             result_payload["provenance_record"] = provenance_record
             result_payload["structured_measurements"] = provenance_record["structured_measurements"]
