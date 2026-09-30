@@ -114,6 +114,7 @@ export default function Dropzone({
         <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-teal-300/30 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
         <input
           ref={inputRef}
+          id="radassist-import-input"
           type="file"
           hidden
           multiple
