@@ -7,6 +7,7 @@ import {
   Check,
   Circle,
   Database,
+  GitCompare,
   Download,
   FileDown,
   LoaderCircle,
@@ -27,6 +28,7 @@ import DemoMPRViewer from "./DemoMPRViewer";
 import Three3DMeshViewer from "./Three3DMeshViewer";
 import MetricsPanel from "./MetricsPanel";
 import AdvancedAnalyticsPanel from "./AdvancedAnalyticsPanel";
+import CaseComparisonPanel from "./CaseComparisonPanel";
 import ViewerErrorBoundary from "./ViewerErrorBoundary";
 
 import type {
@@ -347,6 +349,9 @@ export default function ScanWorkspace() {
       null,
     );
 
+  const [comparison, setComparison] =
+    useState<CaseResult | null>(null);
+
   const [protectedVolumeUrl, setProtectedVolumeUrl] =
     useState<string | null>(null);
 
@@ -479,6 +484,7 @@ export default function ScanWorkspace() {
     setError(null);
 
     setResult(null);
+    setComparison(null);
     setStage("ingest");
     setProgress(0);
   }
@@ -647,6 +653,32 @@ export default function ScanWorkspace() {
           ? err.message
           : "Synthetic demo failed.",
       );
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function compareWithLatestCompatible() {
+    if (!result || working) return;
+
+    const candidate = history.find(
+      (item) =>
+        item.case_id !== result.request_id &&
+        item.target === result.target &&
+        item.modality === result.modality,
+    );
+
+    if (!candidate) {
+      setError("No previous compatible study is available for comparison.");
+      return;
+    }
+
+    setWorking(true);
+    setError(null);
+    try {
+      setComparison(await getCase(candidate.case_id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load comparison study.");
     } finally {
       setWorking(false);
     }
@@ -1438,6 +1470,19 @@ export default function ScanWorkspace() {
                       <button
                         type="button"
                         className="ra-icon-btn"
+                        disabled={working}
+                        onClick={() =>
+                          void compareWithLatestCompatible()
+                        }
+                        aria-label="Compare with previous compatible study"
+                        title="Compare with previous compatible study"
+                      >
+                        <GitCompare size={14} />
+                      </button>
+
+                      <button
+                        type="button"
+                        className="ra-icon-btn"
                         onClick={() =>
                           downloadJson(
                             result,
@@ -1811,6 +1856,11 @@ export default function ScanWorkspace() {
                     <div className="mt-3">
                       <AdvancedAnalyticsPanel result={result} />
                     </div>
+                    {comparison && (
+                      <div className="mt-3">
+                        <CaseComparisonPanel current={result} previous={comparison} />
+                      </div>
+                    )}
                   </div>
                 </aside>
               </section>
