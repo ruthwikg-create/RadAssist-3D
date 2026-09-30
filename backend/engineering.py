@@ -17,6 +17,19 @@ def sha256_file(path: Path) -> str:
             digest.update(chunk)
     return digest.hexdigest()
 
+
+def build_input_manifest(paths: list[Path]) -> list[dict[str, Any]]:
+    """Create a reproducibility manifest without persisting source filenames."""
+    manifest: list[dict[str, Any]] = []
+    for index, path in enumerate(paths):
+        manifest.append({
+            "index": index,
+            "extension": path.suffix.lower(),
+            "size_bytes": path.stat().st_size,
+            "sha256": sha256_file(path),
+        })
+    return manifest
+
 def validate_input_contract(*, source_type: str, modality: str, dimensions: list[int], spacing_mm: list[float]) -> dict[str, Any]:
     errors: list[str] = []
     if len(dimensions) != 3 or any(int(v) <= 0 for v in dimensions):
