@@ -41,6 +41,7 @@ try:
     from .heart_model_adapter import CardiacVentricularAdapter
     from .prostate_model_adapter import ProstateMRIAdapter
     from .multimodel_engine import MultiModelInferenceEngine
+    from .engineering import append_audit_event, build_provenance, validate_input_contract, write_report_bundle
 except ImportError:
     from case_store import (
         case_dir,
@@ -60,6 +61,7 @@ except ImportError:
     from heart_model_adapter import CardiacVentricularAdapter
     from prostate_model_adapter import ProstateMRIAdapter
     from multimodel_engine import MultiModelInferenceEngine
+    from engineering import append_audit_event, build_provenance, validate_input_contract, write_report_bundle
 
 
 logging.basicConfig(
