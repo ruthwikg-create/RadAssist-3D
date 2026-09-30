@@ -70,6 +70,28 @@ def delete_case(case_id: str) -> None:
         shutil.rmtree(path)
 
 
+def purge_expired_cases(retention_hours: float) -> int:
+    """Delete stored case artifacts older than the configured retention window."""
+    if retention_hours <= 0:
+        return 0
+
+    cutoff = datetime.now(timezone.utc).timestamp() - (retention_hours * 3600)
+    removed = 0
+    try:
+        case_paths = [p for p in CASE_ROOT.iterdir() if p.is_dir()]
+    except OSError:
+        return 0
+
+    for path in case_paths:
+        try:
+            if path.stat().st_mtime < cutoff:
+                shutil.rmtree(path)
+                removed += 1
+        except OSError:
+            continue
+    return removed
+
+
 def list_case_summaries(limit: int = 25) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     try:
