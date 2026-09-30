@@ -508,6 +508,9 @@ class SegmentResponse(BaseModel):
 
     measurement_quality: MeasurementQuality | None = None
 
+    advanced_metrics: dict[str, Any] = Field(default_factory=dict)
+    input_notes: list[str] = Field(default_factory=list)
+
     model_provenance: ModelProvenance
 
     label_metrics: list[LabelMetric] = Field(
