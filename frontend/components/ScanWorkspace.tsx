@@ -1926,7 +1926,7 @@ export default function ScanWorkspace() {
               </section>
             )}
 
-            <ResearchAnalyticsPanel result={result} />
+            {result ? <ResearchAnalyticsPanel result={result} /> : null}
 
             <footer className="ra-footer">
               <div className="flex items-center gap-2">
