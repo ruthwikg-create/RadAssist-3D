@@ -27,17 +27,28 @@ TRAINED_MODEL_PATHS = (
 )
 
 _configured_model_path = os.environ.get("RADASSIST_MODEL_PATH")
-if _configured_model_path:
-    MODEL_PATH = Path(_configured_model_path)
-else:
-    MODEL_PATH = next(
+
+# A stale container path in a copied .env file should not make a valid local
+# checkpoint appear offline. An explicitly configured path wins only when it
+# resolves to an existing file; otherwise known local candidates are searched.
+_configured_candidate = (
+    Path(_configured_model_path).expanduser()
+    if _configured_model_path
+    else None
+)
+
+MODEL_PATH = (
+    _configured_candidate
+    if _configured_candidate is not None and _configured_candidate.exists()
+    else next(
         (
             candidate
             for candidate in (DEFAULT_MODEL_PATH, *TRAINED_MODEL_PATHS)
             if candidate.exists()
         ),
-        TRAINED_MODEL_PATHS[0],
+        _configured_candidate or TRAINED_MODEL_PATHS[0],
     )
+)
 
 
 class SpleenUNetAdapter:
