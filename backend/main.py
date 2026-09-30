@@ -5,6 +5,7 @@ import os
 import tempfile
 import uuid
 import zipfile
+import hmac
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,8 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, ORJSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
@@ -280,6 +283,8 @@ async def lifespan(app: FastAPI):
 # FastAPI app
 # ---------------------------------------------------------------------------
 
+_enable_docs = os.getenv("RADASSIST_ENABLE_DOCS", "false").lower() == "true"
+
 app = FastAPI(
     title="RadAssist 3D API",
     version="1.4.0",
@@ -289,7 +294,72 @@ app = FastAPI(
     ),
     default_response_class=ORJSONResponse,
     lifespan=lifespan,
+    docs_url="/docs" if _enable_docs else None,
+    redoc_url="/redoc" if _enable_docs else None,
+    openapi_url="/openapi.json" if _enable_docs else None,
 )
+
+API_TOKEN = os.getenv("RADASSIST_API_TOKEN", "").strip()
+REQUIRE_API_AUTH = os.getenv("RADASSIST_REQUIRE_AUTH", "false").lower() == "true"
+
+if REQUIRE_API_AUTH and not API_TOKEN:
+    raise RuntimeError(
+        "RADASSIST_REQUIRE_AUTH=true requires RADASSIST_API_TOKEN."
+    )
+
+trusted_hosts = [
+    host.strip()
+    for host in os.getenv(
+        "RADASSIST_TRUSTED_HOSTS",
+        "localhost,127.0.0.1",
+    ).split(",")
+    if host.strip()
+]
+
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=trusted_hosts,
+)
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "camera=(), microphone=(), geolocation=(), payment=()",
+        )
+        if request.url.path.startswith("/api/v1/"):
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Pragma"] = "no-cache"
+        if os.getenv("RADASSIST_FORCE_HTTPS", "false").lower() == "true":
+            response.headers.setdefault(
+                "Strict-Transport-Security",
+                "max-age=31536000; includeSubDomains",
+            )
+        return response
+
+class ApiAuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if REQUIRE_API_AUTH and request.url.path.startswith("/api/v1/"):
+            authorization = request.headers.get("authorization", "")
+            scheme, _, supplied = authorization.partition(" ")
+            if (
+                scheme.lower() != "bearer"
+                or not supplied
+                or not hmac.compare_digest(supplied, API_TOKEN)
+            ):
+                return ORJSONResponse(
+                    {"detail": "Authentication required."},
+                    status_code=401,
+                    headers={"Cache-Control": "no-store"},
+                )
+        return await call_next(request)
+
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(ApiAuthMiddleware)
 
 
 cors_origins = [
@@ -559,7 +629,7 @@ async def root() -> dict[str, str]:
         "service": "RadAssist 3D API",
         "version": "1.4.0",
         "status": "ok",
-        "docs": "/docs",
+        "docs": "/docs" if _enable_docs else "disabled",
         "health": "/health",
     }
 
