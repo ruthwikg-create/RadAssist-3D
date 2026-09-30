@@ -1177,14 +1177,19 @@ export default function ScanWorkspace() {
 
                 <button
                   type="button"
-                  disabled={working}
+                  disabled={working || backend?.demo_enabled !== true}
                   onClick={() =>
                     void runDemo()
                   }
                   className="ra-btn disabled:cursor-not-allowed disabled:opacity-40"
+                  title={
+                    backend?.demo_enabled === true
+                      ? "Create synthetic demonstration study"
+                      : "Synthetic demo is disabled by the backend"
+                  }
                 >
                   <Sparkles size={14} />
-                  Demo study
+                  {backend?.demo_enabled === true ? "Demo study" : "Demo off"}
                 </button>
               </div>
 
