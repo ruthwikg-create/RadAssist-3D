@@ -137,6 +137,13 @@ export type CaseResult = {
 
   stored_at?: string;
 
+  provenance_record?: Record<string, unknown>;
+  structured_measurements?: Record<string, unknown>;
+  dicom_seg_result?: Record<string, unknown>;
+  dicom_sr_result?: Record<string, unknown>;
+  uncertainty_status?: Record<string, unknown>;
+  input_validation?: Record<string, unknown>;
+
   persisted?: boolean;
 };
 

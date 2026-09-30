@@ -237,6 +237,12 @@ export default function ThreeDMeshViewer({
 
   const [fullscreen, setFullscreen] =
     useState(false);
+  const [clipEnabled, setClipEnabled] =
+    useState(false);
+  const [clipPosition, setClipPosition] =
+    useState(0);
+  const clippingPlaneRef =
+    useRef(new THREE.Plane(new THREE.Vector3(1, 0, 0), 0));
 
   const [error, setError] =
     useState<string | null>(null);
@@ -258,7 +264,7 @@ export default function ThreeDMeshViewer({
 
       return next;
     });
-  }, [surfaces]);
+  }, [surfaces, clipPosition]);
 
   useEffect(() => {
     const container =
@@ -300,6 +306,8 @@ export default function ThreeDMeshViewer({
 
     renderer.outputColorSpace =
       THREE.SRGBColorSpace;
+    renderer.localClippingEnabled = true;
+    renderer.clippingPlanes = clipEnabled ? [clippingPlaneRef.current] : [];
 
     const width =
       Math.max(
@@ -524,6 +532,7 @@ export default function ThreeDMeshViewer({
       );
 
     camera.lookAt(0, 0, 0);
+    clippingPlaneRef.current.constant = clipPosition * maxDimension;
 
     controls.target.set(
       0,
@@ -675,6 +684,19 @@ export default function ThreeDMeshViewer({
   }, [surfaces]);
 
   useEffect(() => {
+    clippingPlaneRef.current.constant =
+      clipPosition * Math.max(
+        1,
+        groupRef.current?.children.reduce((max, child) => {
+          const box = new THREE.Box3().setFromObject(child);
+          return Math.max(max, box.getSize(new THREE.Vector3()).length());
+        }, 1) ?? 1,
+      );
+    if (rendererRef.current) {
+      rendererRef.current.clippingPlanes = clipEnabled
+        ? [clippingPlaneRef.current]
+        : [];
+    }
     for (
       const [
         id,
@@ -698,15 +720,17 @@ export default function ThreeDMeshViewer({
       object.material.wireframe =
         wireframe;
     }
-  }, [states, wireframe]);
+  }, [states, wireframe, clipPosition, clipEnabled]);
 
   useEffect(() => {
-    const scene =
-      rendererRef.current
-        ? undefined
-        : undefined;
-
-    void scene;
+    const group = groupRef.current;
+    if (!group) return;
+    const scene = group.parent;
+    if (!scene) return;
+    const axes = scene.getObjectByName("radassist-axes");
+    const grid = scene.getObjectByName("radassist-grid");
+    if (axes) axes.visible = showAxes;
+    if (grid) grid.visible = showGrid;
   }, [showAxes, showGrid]);
 
   const toggleSurface =
@@ -773,6 +797,7 @@ export default function ThreeDMeshViewer({
         } else {
           await element.requestFullscreen();
         }
+        setFullscreen(Boolean(document.fullscreenElement));
       } catch {
         // Ignore fullscreen errors.
       }
@@ -840,6 +865,15 @@ export default function ThreeDMeshViewer({
 
           <button
             type="button"
+            onClick={() => setClipEnabled((value) => !value)}
+            className={`rounded-md border px-2 py-1 text-[9px] ${clipEnabled ? "border-cyan-400/40 text-cyan-300" : "border-white/10 text-slate-400"}`}
+            title="Toggle clipping plane"
+          >
+            Clip
+          </button>
+
+          <button
+            type="button"
             onClick={resetCamera}
             className="rounded-md border border-white/10 p-1.5 text-slate-400"
             title="Reset camera"
@@ -877,6 +911,24 @@ export default function ThreeDMeshViewer({
         </div>
 
         <aside className="border-t border-white/10 bg-black/20 p-3 lg:border-l lg:border-t-0">
+          {clipEnabled && (
+            <div className="mb-3 rounded-lg border border-cyan-300/10 bg-cyan-300/[0.03] p-2.5">
+              <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.12em] text-slate-500">
+                <span>Clipping plane</span>
+                <span className="font-mono text-cyan-200">{clipPosition.toFixed(2)}</span>
+              </div>
+              <input
+                aria-label="3D clipping plane position"
+                type="range"
+                min="-1"
+                max="1"
+                step="0.01"
+                value={clipPosition}
+                onChange={(event) => setClipPosition(Number(event.target.value))}
+                className="mt-2 w-full accent-cyan-400"
+              />
+            </div>
+          )}
           <div className="mb-3">
             <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
               Structures

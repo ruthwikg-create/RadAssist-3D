@@ -41,6 +41,7 @@ try:
     from .heart_model_adapter import CardiacVentricularAdapter
     from .prostate_model_adapter import ProstateMRIAdapter
     from .multimodel_engine import MultiModelInferenceEngine
+    from .engineering import append_audit_event, build_provenance, validate_input_contract, write_report_bundle
 except ImportError:
     from case_store import (
         case_dir,
@@ -60,6 +61,7 @@ except ImportError:
     from heart_model_adapter import CardiacVentricularAdapter
     from prostate_model_adapter import ProstateMRIAdapter
     from multimodel_engine import MultiModelInferenceEngine
+    from engineering import append_audit_event, build_provenance, validate_input_contract, write_report_bundle
 
 
 logging.basicConfig(
@@ -453,6 +455,14 @@ class SegmentResponse(BaseModel):
 
     warnings: list[str]
 
+    # Phase 3 structured-result architecture.
+    provenance_record: dict[str, Any] | None = None
+    structured_measurements: dict[str, Any] | None = None
+    dicom_seg_result: dict[str, Any] | None = None
+    dicom_sr_result: dict[str, Any] | None = None
+    uncertainty_status: dict[str, Any] | None = None
+    input_validation: dict[str, Any] | None = None
+
 
 class CaseSummary(BaseModel):
     case_id: str
@@ -822,6 +832,8 @@ async def get_case_bundle(
             directory / "preview.nii",
             directory
             / "segmentation_mask.nii.gz",
+            directory / "report.json",
+            directory / "audit.jsonl",
         ]
 
         existing = [
@@ -860,6 +872,17 @@ async def get_case_bundle(
             )
         },
     )
+
+
+@app.get("/api/v1/cases/{case_id}/report")
+async def get_case_report(case_id: str) -> FileResponse:
+    try:
+        path = _absolute_case_file(case_id, "report.json")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Structured report not found.")
+    return FileResponse(path, media_type="application/json", filename="radassist_report.json", headers={"Cache-Control": "private, max-age=300"})
 
 
 # ---------------------------------------------------------------------------
@@ -1100,6 +1123,36 @@ async def segment(
                         case_path,
                     )
                 )
+
+            input_validation = validate_input_contract(
+                source_type=str(result_payload.get("source_type", "UNKNOWN")),
+                modality=str(result_payload.get("modality", "UNKNOWN")),
+                dimensions=[int(v) for v in result_payload.get("original_dimensions", [])],
+                spacing_mm=[float(v) for v in result_payload.get("original_spacing_mm", [])],
+            )
+            if input_validation["status"] != "PASS":
+                raise ValueError("Input validation failed: " + ", ".join(input_validation["errors"]))
+
+            # Build deterministic structured result metadata before persistence.
+            result_payload["input_validation"] = input_validation
+            provenance_record = build_provenance(result_payload)
+            result_payload["provenance_record"] = provenance_record
+            result_payload["structured_measurements"] = provenance_record["structured_measurements"]
+            result_payload["dicom_seg_result"] = provenance_record["dicom_seg"]
+            result_payload["dicom_sr_result"] = provenance_record["dicom_sr"]
+            result_payload["uncertainty_status"] = provenance_record["structured_measurements"]["uncertainty_status"]
+
+            write_report_bundle(case_path, result_payload)
+            append_audit_event(
+                case_path,
+                "SEGMENTATION_COMPLETED",
+                request_id=case_id,
+                target=target,
+                source_type=result_payload.get("source_type"),
+                modality=result_payload.get("modality"),
+                input_validation=input_validation,
+                qa_status=(result_payload.get("measurement_quality") or {}).get("status"),
+            )
 
             save_case_result(
                 case_id,

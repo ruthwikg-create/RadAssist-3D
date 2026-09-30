@@ -84,8 +84,8 @@ export default function MetricsPanel({ result }: { result: CaseResult }) {
       <div className="glass rounded-2xl p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-xs font-semibold text-white"><Activity size={15} className="text-teal-200" /> Intensity statistics</div>
-          <span className={`rounded-full border px-2 py-1 text-[8px] font-bold tracking-[0.08em] ${quality.hu_calibrated ? "border-teal-300/15 bg-teal-300/5 text-teal-200" : "border-amber-200/10 bg-amber-200/5 text-amber-100"}`}>
-            {quality.hu_calibrated ? "HU VERIFIED" : "UNVERIFIED UNITS"}
+          <span className={`rounded-full border px-2 py-1 text-[8px] font-bold tracking-[0.08em] ${result.modality === "MR" ? "border-violet-300/15 bg-violet-300/5 text-violet-200" : quality.hu_calibrated ? "border-teal-300/15 bg-teal-300/5 text-teal-200" : "border-amber-200/10 bg-amber-200/5 text-amber-100"}`}>
+            {result.modality === "MR" ? "MR SIGNAL · UNCALIBRATED" : quality.hu_calibrated ? "HU VERIFIED" : "UNVERIFIED UNITS"}
           </span>
         </div>
         <div className="grid grid-cols-2 gap-2">
@@ -104,6 +104,7 @@ export default function MetricsPanel({ result }: { result: CaseResult }) {
           ))}
         </div>
         <div className="mt-3 ra-provenance">
+          <div className="ra-provenance-row"><span>Statistic domain</span><strong>{result.modality === "MR" ? "Source MR signal intensity" : quality.hu_calibrated ? "Hounsfield Units" : "Source intensity values"}</strong></div>
           <div className="ra-provenance-row"><span>Intensity domain</span><strong>{quality.intensity_domain}</strong></div>
           <div className="ra-provenance-row"><span>Measurement method</span><strong>{quality.measurement_method}</strong></div>
           {(quality.rescale_slope !== null || quality.rescale_intercept !== null) && (
@@ -144,6 +145,19 @@ export default function MetricsPanel({ result }: { result: CaseResult }) {
         <div className="mb-3 flex items-center justify-between gap-3"><div className="flex items-center gap-2 text-xs font-semibold text-white"><CheckCircle2 size={15} className={statusClass(quality.status)} /> Output QA</div><span className={`text-[9px] font-bold ${statusClass(quality.status)}`}>{quality.status}</span></div>
         <div className="space-y-2">
           {quality.flags.length === 0 ? <div className="flex items-start gap-2 rounded-xl border border-emerald-300/10 bg-emerald-300/[0.035] p-3 text-[9px] leading-4 text-emerald-100"><CheckCircle2 size={13} className="mt-0.5 shrink-0" /> No automated measurement-QA flags were raised for this case.</div> : quality.flags.map((flag) => <div key={flag} className="ra-flag"><ShieldAlert size={12} className="mt-0.5 shrink-0" />{flag}</div>)}
+        </div>
+      </div>
+
+      <div className="glass rounded-2xl p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs font-semibold text-white"><ShieldAlert size={15} className="text-sky-200" /> Structured QA</div>
+          <span className={`text-[9px] font-bold ${statusClass(quality.status)}`}>{quality.status}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-[9px]">
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-2"><span className="text-slate-600">Result schema</span><strong className="mt-1 block text-slate-200">radassist-result-1.0</strong></div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-2"><span className="text-slate-600">Patient accuracy</span><strong className="mt-1 block text-amber-100">Not established</strong></div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-2"><span className="text-slate-600">Measurement uncertainty</span><strong className="mt-1 block text-amber-100">Not estimated</strong></div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-2"><span className="text-slate-600">DICOM result architecture</span><strong className="mt-1 block text-slate-200">SEG / SR compatible</strong></div>
         </div>
       </div>
 

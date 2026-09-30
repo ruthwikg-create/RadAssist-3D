@@ -240,6 +240,38 @@ def _read_dicom_intensity_domain(path: Path, modality: str) -> tuple[str, bool, 
         pass
     return "DICOM CT intensity values (HU provenance not fully verified)", False, None, None
 
+
+def _validate_dicom_series_integrity(files: list[str]) -> dict[str, Any]:
+    """Check identity-critical DICOM tags across the selected series."""
+    keys = {
+        "0020|000d": "StudyInstanceUID",
+        "0020|000e": "SeriesInstanceUID",
+        "0020|0052": "FrameOfReferenceUID",
+        "0008|0060": "Modality",
+    }
+    observed: dict[str, set[str]] = {name: set() for name in keys.values()}
+    for filename in files:
+        reader = sitk.ImageFileReader()
+        reader.SetFileName(str(filename))
+        reader.LoadPrivateTagsOn()
+        reader.ReadImageInformation()
+        for key, name in keys.items():
+            if reader.HasMetaDataKey(key):
+                observed[name].add(reader.GetMetaData(key).strip())
+    errors = [name for name, values in observed.items() if len(values) > 1]
+    if errors:
+        raise ValueError(
+            "DICOM metadata integrity check failed: inconsistent "
+            + ", ".join(errors)
+            + " across the selected series."
+        )
+    missing = [name for name, values in observed.items() if not values]
+    return {
+        "status": "REVIEW" if missing else "PASS",
+        "checked_tags": list(keys.values()),
+        "missing_tags": missing,
+    }
+
 def _read_dicom_series(directory: Path) -> VolumeData:
     # Scan the extraction root and nested folders so common DICOM ZIP layouts
     # (series/IM-0001.dcm, nested vendor folders, etc.) work reliably.
@@ -267,6 +299,7 @@ def _read_dicom_series(directory: Path) -> VolumeData:
         raise ValueError("The uploaded DICOM set contains multiple series. Upload exactly one CT series.")
 
     _, files = next(iter(candidates.values()))
+    _validate_dicom_series_integrity(files)
     reader = sitk.ImageSeriesReader()
     reader.SetFileNames(files)
     reader.MetaDataDictionaryArrayUpdateOn()
