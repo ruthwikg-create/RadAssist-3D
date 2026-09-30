@@ -728,25 +728,6 @@ textarea:focus-visible {
   font-weight: 700;
 }
 
-.ra-case-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.72fr) minmax(300px, 0.48fr);
-  align-items: start;
-  gap: 12px;
-}
-
-.ra-view-stack {
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-}
-
-.ra-inspector {
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-}
-
 .ra-study-strip {
   display: flex;
   align-items: center;
