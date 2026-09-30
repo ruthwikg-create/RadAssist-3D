@@ -31,6 +31,7 @@ try:
         create_case,
         delete_case,
         list_case_summaries,
+        purge_expired_cases,
         load_case_result,
         save_case_result,
     )
@@ -52,6 +53,7 @@ except ImportError:
         create_case,
         delete_case,
         list_case_summaries,
+        purge_expired_cases,
         load_case_result,
         save_case_result,
     )
@@ -121,6 +123,11 @@ SUPPORTED_TARGETS = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    retention_hours = float(os.getenv("RADASSIST_CASE_RETENTION_HOURS", "0"))
+    if retention_hours > 0:
+        removed = purge_expired_cases(retention_hours)
+        logger.info("Removed %d expired case artifacts.", removed)
+
     logger.info(
         "Starting RadAssist 3D backend on %s",
         DEVICE,
