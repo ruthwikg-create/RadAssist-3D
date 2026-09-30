@@ -52,6 +52,28 @@ class WorkstationRegressionTests(unittest.TestCase):
         self.assertEqual(smoothed.face_count, mesh.face_count)
         self.assertEqual(smoothed.faces, mesh.faces)
 
+    def test_physical_mesh_applies_spacing_once(self) -> None:
+        from backend.pipeline import _physical_mesh_from_mask
+
+        array = np.zeros((8, 8, 8), dtype=np.uint8)
+        array[2:4, 2:4, 2:4] = 1
+        image = sitk.GetImageFromArray(array)
+        image.SetSpacing((2.0, 3.0, 4.0))
+
+        mesh = _physical_mesh_from_mask(image, step_size=1)
+
+        self.assertGreater(mesh.vertex_count, 0)
+        vertices = np.asarray(mesh.vertices, dtype=float)
+        extent = vertices.max(axis=0) - vertices.min(axis=0)
+
+        # Two occupied voxels along each axis produce a four/eight/twelve mm
+        # physical extent according to the native X/Y/Z spacing.
+        np.testing.assert_allclose(
+            extent,
+            np.asarray([4.0, 6.0, 8.0]),
+            atol=0.01,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
