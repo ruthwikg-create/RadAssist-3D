@@ -93,6 +93,9 @@ export default function ClinicalResearchConsole({
   onCompare,
   onSettings,
   viewerContent,
+  mprContent,
+  surfaceContent,
+  metricsContent,
   importContent,
 }: {
   result: CaseResult | null;
@@ -108,6 +111,9 @@ export default function ClinicalResearchConsole({
   onCompare: () => void;
   onSettings: () => void;
   viewerContent: React.ReactNode;
+  mprContent?: React.ReactNode;
+  surfaceContent?: React.ReactNode;
+  metricsContent?: React.ReactNode;
   importContent: React.ReactNode;
 }) {
   const quality = result?.measurement_quality;
@@ -385,13 +391,13 @@ export default function ClinicalResearchConsole({
           <div className="cw-mode-panel">
             <div className="cw-mode-title">3D RECONSTRUCTION</div>
             <p>Existing Three.js reconstruction and mesh diagnostics are preserved below.</p>
-            <div id="cw-viewer-slot" className="cw-viewer-filter cw-viewer-only-3d">{viewerContent}</div>
+            <div id="cw-viewer-slot" className="cw-viewer-filter cw-viewer-only-3d">{surfaceContent ?? viewerContent}</div>
           </div>
         ) : section === "metrics" ? (
           <div className="cw-mode-panel">
             <div className="cw-mode-title">QUANTIFICATION</div>
             <p>Existing quantitative measurements and advanced analytics are shown without changing stored results.</p>
-            <div id="cw-viewer-slot" className="cw-viewer-filter cw-viewer-only-metrics">{viewerContent}</div>
+            <div id="cw-viewer-slot" className="cw-viewer-filter cw-viewer-only-metrics">{metricsContent ?? viewerContent}</div>
           </div>
         ) : section === "qa" ? (
           <div className="cw-mode-panel">
