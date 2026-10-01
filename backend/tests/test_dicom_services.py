@@ -6,6 +6,7 @@ import highdicom as hd
 from pydicom.dataset import Dataset
 from pydicom.data import get_testdata_file
 
+from backend.engineering import build_provenance
 from backend.dicom_services import (
     anonymize_dataset,
     create_segmentation,
@@ -111,3 +112,31 @@ def test_series_metadata_reports_single_series(tmp_path):
     assert metadata["status"] == "PASS"
     assert metadata["instance_count"] == 1
     assert metadata["series_count"] == 1
+
+
+def test_provenance_preserves_created_dicom_artifacts():
+    result = {
+        "request_id": "case-1",
+        "target": "spleen",
+        "source_type": "DICOM",
+        "modality": "CT",
+        "original_dimensions": [16, 16, 1],
+        "original_spacing_mm": [1.0, 1.0, 2.0],
+        "volume_cm3": 1.0,
+        "measurement_quality": {
+            "measurement_method": "test",
+            "surface_area_cm2": 2.0,
+            "mesh_volume_cm3": 1.0,
+            "equivalent_diameter_mm": 12.0,
+        },
+        "validation_benchmark": {"validation_dice": None},
+        "label_metrics": [{"label": 1, "name": "spleen", "voxel_count": 100}],
+        "dicom_seg_result": {"status": "CREATED", "path": "segmentation.dcm"},
+        "dicom_sr_result": {"status": "CREATED", "path": "structured_report.dcm"},
+        "model_provenance": {"name": "test"},
+    }
+    provenance = build_provenance(result)
+    assert provenance["dicom_seg"]["status"] == "CREATED"
+    assert provenance["dicom_seg"]["path"] == "segmentation.dcm"
+    assert provenance["dicom_sr"]["status"] == "CREATED"
+    assert provenance["dicom_sr"]["path"] == "structured_report.dcm"
