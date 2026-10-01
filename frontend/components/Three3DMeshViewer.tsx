@@ -24,6 +24,8 @@ type Props = {
   labelMeshes?: Record<string, LabelMeshData>;
   meshDiagnostics?: Record<string, string>;
   target?: CaseResult["target"];
+  voxelCount?: number;
+  onImport?: () => void;
 };
 
 type Surface = {
@@ -186,6 +188,8 @@ export default function ThreeDMeshViewer({
   labelMeshes,
   meshDiagnostics,
   target,
+  voxelCount,
+  onImport,
 }: Props) {
   const containerRef =
     useRef<HTMLDivElement | null>(null);
@@ -987,12 +991,26 @@ export default function ThreeDMeshViewer({
         >
           {error && (
             <div className="absolute inset-0 z-10 flex items-center justify-center p-6">
-              <div className="max-w-md rounded-lg border border-red-400/20 bg-red-950/40 p-4 text-center text-xs text-red-200">
-                <div>{error}</div>
-                {diagnosticText ? (
-                  <div className="mt-2 break-words text-[9px] text-red-200/70">
-                    {diagnosticText}
+              <div className="max-w-lg rounded-lg border border-red-400/20 bg-red-950/55 p-4 text-center text-xs text-red-100 shadow-2xl">
+                <div className="font-semibold">3D surface is unavailable for this case</div>
+                <div className="mt-2 text-[10px] leading-relaxed text-red-200/80">{error}</div>
+                {voxelCount === 0 ? (
+                  <div className="mt-3 border border-amber-300/10 bg-black/20 p-2 text-left text-[9px] leading-relaxed text-amber-100/80">
+                    Segmentation foreground: <b>0 voxels</b>. This is an empty AI result, so no anatomical surface can be rendered without inventing geometry.
+                    Re-import and run the current model after correcting the segmentation result.
                   </div>
+                ) : null}
+                {diagnosticText ? (
+                  <div className="mt-2 break-words text-left text-[9px] text-red-200/60">{diagnosticText}</div>
+                ) : null}
+                {voxelCount === 0 && onImport ? (
+                  <button
+                    type="button"
+                    onClick={onImport}
+                    className="mt-3 rounded border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-[9px] font-semibold text-cyan-200"
+                  >
+                    Import &amp; Re-analyze
+                  </button>
                 ) : null}
               </div>
             </div>
