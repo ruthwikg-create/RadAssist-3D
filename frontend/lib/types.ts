@@ -51,6 +51,13 @@ export type MeasurementQuality = {
   centroid_mm: number[] | null;
   intensity_domain: string;
   hu_calibrated: boolean;
+  mean_intensity?: number | null;
+  std_intensity?: number | null;
+  min_intensity?: number | null;
+  max_intensity?: number | null;
+  median_intensity?: number | null;
+  p05_intensity?: number | null;
+  p95_intensity?: number | null;
   rescale_slope: number | null;
   rescale_intercept: number | null;
   flags: string[];
