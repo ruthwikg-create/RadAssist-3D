@@ -1274,6 +1274,52 @@ async def segment(
         ) from exc
 
 
+@app.get("/api/v1/cases/{case_id}/dicom-metadata")
+async def get_case_dicom_metadata(case_id: str) -> dict[str, Any]:
+    path = _absolute_case_file(case_id, "dicom_metadata.json")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="DICOM metadata is not available for this case.")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@app.get("/api/v1/cases/{case_id}/dicom-seg")
+async def get_case_dicom_seg(case_id: str) -> FileResponse:
+    path = _absolute_case_file(case_id, "segmentation.dcm")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="DICOM SEG is not available for this case.")
+    return FileResponse(path, media_type="application/dicom", filename="radassist_segmentation.dcm")
+
+
+@app.get("/api/v1/cases/{case_id}/dicom-sr")
+async def get_case_dicom_sr(case_id: str) -> FileResponse:
+    path = _absolute_case_file(case_id, "structured_report.dcm")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="DICOM SR is not available for this case.")
+    return FileResponse(path, media_type="application/dicom", filename="radassist_structured_report.dcm")
+
+
+@app.post("/api/v1/dicom/anonymize")
+async def anonymize_dicom(files: list[UploadFile] = File(...)) -> Response:
+    if not files:
+        raise HTTPException(status_code=400, detail="No DICOM files were supplied.")
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="radassist_deid_") as temp_dir:
+        root = Path(temp_dir) / "input"
+        out = Path(temp_dir) / "output"
+        root.mkdir()
+        total = 0
+        for index, upload in enumerate(files):
+            name = Path(upload.filename or f"input_{index}.dcm").name
+            destination = root / name
+            total = await _save_upload(upload, destination, total)
+        anonymize_directory(root, out, salt=uuid.uuid4().hex)
+        return Response(
+            content=zip_directory(out),
+            media_type="application/zip",
+            headers={"Content-Disposition": 'attachment; filename="radassist_anonymized_dicom.zip"'},
+        )
+
+
 # ---------------------------------------------------------------------------
 # Synthetic demo
 # ---------------------------------------------------------------------------
