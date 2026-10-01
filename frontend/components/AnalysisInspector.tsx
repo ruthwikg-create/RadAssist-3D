@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { BrainCircuit, ChevronDown, ChevronUp, ShieldCheck, Timer, Database, Sparkles } from "lucide-react";
 import type { CaseResult } from "@/lib/types";
+import { API_BASE_URL } from "@/lib/api";
 
 function fmt(value: unknown, digits = 2) {
   return typeof value === "number" && Number.isFinite(value) ? value.toFixed(digits) : "—";
@@ -11,6 +12,9 @@ function fmt(value: unknown, digits = 2) {
 export default function AnalysisInspector({ result }: { result: CaseResult }) {
   const [advanced, setAdvanced] = useState(false);
   const [provenance, setProvenance] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [assistantAnswer, setAssistantAnswer] = useState("");
+  const [assistantBusy, setAssistantBusy] = useState(false);
   const model = result.model_provenance;
   const quality = result.measurement_quality;
   const validation = result.validation_benchmark;
@@ -53,6 +57,58 @@ export default function AnalysisInspector({ result }: { result: CaseResult }) {
         <div className="mt-2 rounded-lg border border-amber-300/10 bg-amber-300/[0.03] p-2 text-[9px] leading-4 text-amber-100">
           No diagnosis, prognosis, or treatment recommendation is generated here.
         </div>
+      </section>
+
+      <section className="ra-inspector-card p-3">
+        <div className="ra-section-label">AI research assistant</div>
+        <div className="mt-1 text-[9px] leading-4 text-slate-500">
+          Ask about measurements, QA, provenance, or validation. The assistant is result-grounded and must not provide diagnosis or treatment advice.
+        </div>
+        <form
+          className="mt-3 flex gap-2"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (!question.trim() || assistantBusy) return;
+            setAssistantBusy(true);
+            try {
+              const response = await fetch(
+                API_BASE_URL + "/api/v1/cases/" + encodeURIComponent(result.request_id) + "/assistant",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ question: question.trim() }),
+                },
+              );
+              const body = await response.json();
+              if (!response.ok) throw new Error(body?.detail ?? "Assistant request failed.");
+              setAssistantAnswer(String(body.answer ?? ""));
+            } catch (error) {
+              setAssistantAnswer(error instanceof Error ? error.message : "Assistant request failed.");
+            } finally {
+              setAssistantBusy(false);
+            }
+          }}
+        >
+          <input
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            placeholder="e.g. Explain the QA flags"
+            className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/20 px-2 py-2 text-[9px] text-slate-200 outline-none"
+            maxLength={2000}
+          />
+          <button
+            type="submit"
+            disabled={assistantBusy || !question.trim()}
+            className="rounded-md border border-cyan-300/20 px-2 text-[9px] text-cyan-200 disabled:opacity-40"
+          >
+            {assistantBusy ? "…" : "Ask"}
+          </button>
+        </form>
+        {assistantAnswer ? (
+          <div className="mt-2 rounded-lg border border-cyan-300/10 bg-cyan-300/[0.03] p-2 text-[9px] leading-4 text-slate-300">
+            {assistantAnswer}
+          </div>
+        ) : null}
       </section>
 
       <section className="ra-inspector-card p-3">
