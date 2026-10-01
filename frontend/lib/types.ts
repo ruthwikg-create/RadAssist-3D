@@ -142,6 +142,7 @@ export type CaseResult = {
   original_dimensions: number[];
 
   processing_seconds: number;
+  stage_timings_seconds?: Record<string, number>;
   mesh_step_size: number;
 
   preview: {
