@@ -451,6 +451,7 @@ class SegmentResponse(BaseModel):
     original_dimensions: list[int]
 
     processing_seconds: float
+    stage_timings_seconds: dict[str, float] = Field(default_factory=dict)
     mesh_step_size: int
 
     preview: PreviewResponse
