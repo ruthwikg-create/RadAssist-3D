@@ -8,6 +8,8 @@ import {
   Eye,
   EyeOff,
   Grid3X3,
+  Camera,
+  Focus,
 } from "lucide-react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -241,6 +243,7 @@ export default function ThreeDMeshViewer({
     useState(false);
   const [clipPosition, setClipPosition] =
     useState(0);
+  const [clipAxis, setClipAxis] = useState<"x" | "y" | "z">("x");
   const clippingPlaneRef =
     useRef(new THREE.Plane(new THREE.Vector3(1, 0, 0), 0));
 
@@ -532,6 +535,7 @@ export default function ThreeDMeshViewer({
       );
 
     camera.lookAt(0, 0, 0);
+    clippingPlaneRef.current.normal.set(clipAxis === "x" ? 1 : 0, clipAxis === "y" ? 1 : 0, clipAxis === "z" ? 1 : 0);
     clippingPlaneRef.current.constant = clipPosition * maxDimension;
 
     controls.target.set(
@@ -720,7 +724,7 @@ export default function ThreeDMeshViewer({
       object.material.wireframe =
         wireframe;
     }
-  }, [states, wireframe, clipPosition, clipEnabled]);
+  }, [states, wireframe, clipPosition, clipEnabled, clipAxis]);
 
   useEffect(() => {
     const group = groupRef.current;
@@ -780,6 +784,43 @@ export default function ThreeDMeshViewer({
 
       controls.update();
     };
+
+  const isolateSurface = (id: string) => {
+    if (!id) return;
+    setStates((current) => Object.fromEntries(
+      surfaces.map((surface) => [
+        surface.id,
+        { ...(current[surface.id] ?? { opacity: 0.9 }), visible: surface.id === id },
+      ]),
+    ));
+  };
+
+  const showAllSurfaces = () => {
+    setStates((current) => Object.fromEntries(
+      surfaces.map((surface) => [
+        surface.id,
+        { ...(current[surface.id] ?? { opacity: 0.9 }), visible: true },
+      ]),
+    ));
+  };
+
+  const captureScreenshot = () => {
+    const renderer = rendererRef.current;
+    const camera = cameraRef.current;
+    const group = groupRef.current;
+    const scene = group?.parent;
+    if (!renderer || !camera || !scene) return;
+    renderer.render(scene as THREE.Scene, camera);
+    renderer.domElement.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "radassist-3d-" + (target ?? "surface") + ".png";
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, "image/png");
+  };
 
   const toggleFullscreen =
     async () => {
@@ -863,6 +904,22 @@ export default function ThreeDMeshViewer({
             <Grid3X3 size={13} />
           </button>
 
+          {clipEnabled && (
+            <div className="flex items-center gap-1 rounded-md border border-white/10 px-1 py-1">
+              {(["x", "y", "z"] as const).map((axis) => (
+                <button
+                  key={axis}
+                  type="button"
+                  onClick={() => setClipAxis(axis)}
+                  className={`rounded px-1.5 py-1 text-[9px] uppercase ${clipAxis === axis ? "bg-cyan-300/10 text-cyan-200" : "text-slate-500"}`}
+                  title={"Clip along " + axis.toUpperCase()}
+                >
+                  {axis}
+                </button>
+              ))}
+            </div>
+          )}
+
           <button
             type="button"
             onClick={() => setClipEnabled((value) => !value)}
@@ -872,6 +929,9 @@ export default function ThreeDMeshViewer({
             Clip
           </button>
 
+          <button type="button" onClick={() => isolateSurface(surfaces[0]?.id ?? "")} className="rounded-md border border-white/10 px-2 py-1 text-[9px]" title="Isolate first structure">Isolate</button>
+          <button type="button" onClick={showAllSurfaces} className="rounded-md border border-white/10 px-2 py-1 text-[9px]" title="Show all structures">All</button>
+          <button type="button" onClick={captureScreenshot} className="rounded-md border border-white/10 p-1.5 text-slate-400" title="Capture 3D screenshot"><Camera size={13} /></button>
           <button
             type="button"
             onClick={resetCamera}
@@ -996,6 +1056,8 @@ export default function ThreeDMeshViewer({
                           triangles
                         </div>
                       </div>
+
+                      <button type="button" onClick={() => isolateSurface(surface.id)} className="text-slate-500" title="Isolate structure"><Focus size={13} /></button>
 
                       <button
                         type="button"
