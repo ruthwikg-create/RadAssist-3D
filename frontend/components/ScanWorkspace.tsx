@@ -58,18 +58,16 @@ import {
   segmentFiles,
 } from "../lib/api";
 
-type Target = "spleen" | "heart" | "prostate";
+type Target = "spleen" | "heart" | "prostate" | "brain_tumor";
 
 const TARGET_ORDER: Target[] = [
   "spleen",
   "heart",
   "prostate",
+  "brain_tumor",
 ];
 
-const FALLBACK_MODELS: Record<
-  Target,
-  ModelInfo
-> = {
+const FALLBACK_MODELS: Record<Target, ModelInfo> = {
   spleen: {
     display_name: "Spleen",
     modality: "CT",
@@ -106,6 +104,21 @@ const FALLBACK_MODELS: Record<
       "0": "background",
       "1": "central gland",
       "2": "peripheral zone",
+    },
+    loaded: false,
+    error: null,
+  },
+
+  brain_tumor: {
+    display_name: "Brain Tumor",
+    modality: "MR",
+    description:
+      "BraTS multimodal brain tumor subregion segmentation",
+    labels: {
+      "0": "background",
+      "1": "tumor core",
+      "2": "whole tumor",
+      "4": "enhancing tumor",
     },
     loaded: false,
     error: null,
@@ -300,6 +313,9 @@ function targetLabel(
     case "prostate":
       return "Prostate MRI";
 
+    case "brain_tumor":
+      return "Brain Tumor MRI";
+
     default:
       return "Spleen CT";
   }
@@ -314,6 +330,9 @@ function targetDescription(
 
     case "prostate":
       return "Zonal segmentation · central gland + peripheral zone";
+
+    case "brain_tumor":
+      return "BraTS tumor subregions · T1c + T1 + T2 + FLAIR";
 
     default:
       return "Spleen segmentation · CT";
@@ -544,6 +563,11 @@ export default function ScanWorkspace() {
       return;
     }
 
+    if (selectedTarget === "brain_tumor" && files.length !== 4) {
+      setError("Brain Tumor requires exactly four aligned NIfTI files in this order: T1c, T1, T2, FLAIR.");
+      return;
+    }
+
     setWorking(true);
     setError(null);
     setResult(null);
@@ -739,14 +763,7 @@ export default function ScanWorkspace() {
       setResult(body);
       setFiles([]);
 
-      if (
-        body.target ===
-          "spleen" ||
-        body.target ===
-          "heart" ||
-        body.target ===
-          "prostate"
-      ) {
+      if (body.target === "spleen" || body.target === "heart" || body.target === "prostate" || body.target === "brain_tumor") {
         setSelectedTarget(
           body.target,
         );
