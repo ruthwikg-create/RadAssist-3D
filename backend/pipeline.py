@@ -467,16 +467,17 @@ def _physical_mesh_from_mask(mask: sitk.Image, step_size: int) -> MeshData:
     cropped = mask_array[z0:z1, y0:y1, x0:x1]
 
     spacing_xyz = np.asarray(mask.GetSpacing(), dtype=np.float64)
-    spacing_zyx = (float(spacing_xyz[2]), float(spacing_xyz[1]), float(spacing_xyz[0]))
     verts_zyx, faces, _, _ = marching_cubes(
         cropped,
         level=0.5,
-        spacing=spacing_zyx,
+        spacing=(1.0, 1.0, 1.0),
         step_size=max(1, int(step_size)),
     )
 
-    # marching_cubes returns [z, y, x] positions relative to the cropped
-    # array. Convert them to full-image [x, y, z] millimetre coordinates.
+    # marching_cubes returns [z, y, x] positions in voxel-index units
+    # relative to the cropped array. Add the crop offset once, then apply
+    # the source voxel spacing exactly once to obtain physical millimetres.
+    # This avoids double-scaling anisotropic volumes.
     offset_zyx = np.asarray([z0, y0, x0], dtype=np.float64)
     verts_zyx = verts_zyx + offset_zyx
     xyz = np.column_stack([verts_zyx[:, 2], verts_zyx[:, 1], verts_zyx[:, 0]]) * spacing_xyz
