@@ -27,6 +27,7 @@ import DemoMPRViewer from "./DemoMPRViewer";
 import Three3DMeshViewer from "./Three3DMeshViewer";
 import MetricsPanel from "./MetricsPanel";
 import ViewerErrorBoundary from "./ViewerErrorBoundary";
+import AnalysisInspector from "./AnalysisInspector";
 
 import type {
   BackendHealth,
@@ -1586,6 +1587,8 @@ export default function ScanWorkspace() {
                     id="qa"
                     className="scroll-mt-32"
                   />
+
+                  <AnalysisInspector result={result} />
 
                   <div className="ra-inspector-card ra-enter ra-enter-3 p-3">
                     <div className="flex items-center justify-between gap-3">
