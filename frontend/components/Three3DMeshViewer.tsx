@@ -9,6 +9,7 @@ import {
   EyeOff,
   Grid3X3,
   Camera,
+  Crosshair,
 } from "lucide-react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -791,6 +792,40 @@ export default function ThreeDMeshViewer({
     if (grid) grid.visible = showGrid;
   }, [showAxes, showGrid]);
 
+  const setAllSurfaceVisibility = (visible: boolean) => {
+    setStates((current) => {
+      const next = { ...current };
+      for (const surface of surfaces) {
+        next[surface.id] = {
+          ...(next[surface.id] ?? { visible: true, opacity: 0.9 }),
+          visible,
+        };
+      }
+      return next;
+    });
+  };
+
+  const focusSurface = (id: string) => {
+    const object = objectsRef.current.get(id);
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!object || !camera || !controls) return;
+
+    const box = new THREE.Box3().setFromObject(object);
+    if (box.isEmpty()) return;
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const radius = Math.max(size.length() * 0.5, 1);
+    const distance = radius / Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
+    const direction = camera.position.clone().sub(controls.target).normalize();
+    camera.position.copy(center).add(direction.multiplyScalar(distance * 1.35));
+    camera.near = Math.max(radius / 1000, 0.01);
+    camera.far = Math.max(radius * 20, 1000);
+    camera.updateProjectionMatrix();
+    controls.target.copy(center);
+    controls.update();
+  };
+
   const toggleSurface =
     (id: string) => {
       setStates((current) => ({
@@ -1074,8 +1109,19 @@ export default function ThreeDMeshViewer({
             </div>
           )}
           <div className="mb-3">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-              Structures
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Structures / Segmentation Legend
+                </div>
+                <div className="mt-1 text-[9px] text-slate-600">
+                  {surfaces.length} segmented classes · toggle visibility or isolate a structure
+                </div>
+              </div>
+              <div className="flex gap-1">
+                <button type="button" onClick={() => setAllSurfaceVisibility(true)} className="rounded border border-white/10 px-2 py-1 text-[8px] text-cyan-200">ALL</button>
+                <button type="button" onClick={() => setAllSurfaceVisibility(false)} className="rounded border border-white/10 px-2 py-1 text-[8px] text-slate-400">NONE</button>
+              </div>
             </div>
 
             <div className="mt-1 text-[9px] text-slate-600">
@@ -1141,13 +1187,22 @@ export default function ThreeDMeshViewer({
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          toggleSurface(
-                            surface.id,
-                          )
-                        }
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => focusSurface(surface.id)}
+                          className="text-cyan-300/80"
+                          title="Focus structure"
+                        >
+                          <Crosshair size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            toggleSurface(
+                              surface.id,
+                            )
+                          }
                         className="text-slate-500"
                         title={
                           state.visible
@@ -1162,7 +1217,8 @@ export default function ThreeDMeshViewer({
                             size={13}
                           />
                         )}
-                      </button>
+                        </button>
+                      </div>
                     </div>
 
                     <div className="mt-3">
