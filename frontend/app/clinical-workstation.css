@@ -313,3 +313,15 @@ button{font:inherit}
 .cw-upload-contract b{color:var(--cw-cyan);font:700 9px 'JetBrains Mono',monospace}
 .cw-upload-contract small{color:var(--cw-muted);font:7px/1.4 'JetBrains Mono',monospace}
 @media(max-width:800px){.cw-model-grid{grid-template-columns:1fr}.cw-catalog-head{flex-direction:column}.cw-catalog-status{text-align:left}.cw-upload-contract{grid-template-columns:1fr}}
+
+.cw-compatibility{display:grid;gap:3px}
+.cw-compatibility>div{display:grid;grid-template-columns:82px minmax(0,1fr);gap:6px;padding:5px;background:var(--cw-bg);border:1px solid var(--cw-line-soft)}
+.cw-compatibility span{color:var(--cw-outline);font:7px 'JetBrains Mono',monospace}
+.cw-compatibility b{color:var(--cw-muted);font:7px/1.35 'JetBrains Mono',monospace;word-break:break-word}
+.cw-compatibility .warn{border-color:rgba(235,190,80,.18);background:rgba(235,190,80,.035)}
+.cw-compatibility .warn b{color:var(--cw-amber)}
+.cw-tumor-findings{display:grid;gap:3px}
+.cw-tumor-findings>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 7px;padding:6px;background:var(--cw-bg);border:1px solid var(--cw-line-soft)}
+.cw-tumor-findings span{color:var(--cw-text);font:600 8px 'JetBrains Mono',monospace}
+.cw-tumor-findings b{color:var(--cw-amber);font:700 8px 'JetBrains Mono',monospace}
+.cw-tumor-findings small{grid-column:1/-1;color:var(--cw-muted);font:7px 'JetBrains Mono',monospace}
