@@ -45,3 +45,5 @@
 @media(max-width:800px){.aal-hero{flex-direction:column}.aal-model-grid,.aal-pipeline,.aal-education-grid{grid-template-columns:1fr 1fr}.aal-3d-explainer{grid-template-columns:1fr}.aal-lesion-grid,.aal-review-flow{grid-template-columns:1fr}.aal-contract,.aal-structure-grid,.aal-review-grid{grid-template-columns:1fr}.aal-contract div:nth-child(odd){border-right:0}}
 
 .aal-warning-list{margin:5px 0 0;padding-left:14px;color:var(--cw-amber);font:7px/1.45 'JetBrains Mono',monospace}.aal-warning-list li+li{margin-top:2px}
+
+.aal-planned{border-style:dashed;opacity:.9;background:rgba(69,222,237,.018)}
