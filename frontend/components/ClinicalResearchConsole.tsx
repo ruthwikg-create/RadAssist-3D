@@ -25,6 +25,7 @@ import {
 import { useState } from "react";
 import type { ReactNode } from "react";
 import type { BackendHealth, CaseResult, CaseSummary } from "../lib/types";
+import AdvancedAnatomyLab from "./AdvancedAnatomyLab";
 
 type Mode = "mpr" | "ai" | "research";
 
@@ -127,7 +128,7 @@ export default function ClinicalResearchConsole({
   const [syncLocked, setSyncLocked] = useState(true);
   const [layoutMode, setLayoutMode] = useState<"stack" | "2x2">("stack");
   const [showExportDock, setShowExportDock] = useState(true);
-  const [section, setSection] = useState<"dashboard" | "studies" | "import" | "mpr" | "surface3d" | "metrics" | "qa" | "research" | "export">("research");
+  const [section, setSection] = useState<"dashboard" | "studies" | "import" | "mpr" | "surface3d" | "metrics" | "qa" | "research" | "export" | "anatomy">("research");
 
   const goToSection = (next: typeof section) => {
     setSection(next);
@@ -222,6 +223,7 @@ export default function ClinicalResearchConsole({
             ["Import DICOM/NIfTI", UploadCloud, "import", onImport],
             ["MPR Viewer", Grid2X2, "mpr", () => goToSection("mpr")],
             ["3D Reconstruction", Box, "surface3d", () => goToSection("surface3d")],
+            ["Anatomy & Models", Microscope, "anatomy", () => goToSection("anatomy")],
             ["Quantification", BarChart3, "metrics", () => goToSection("metrics")],
             ["QA & Validation", ShieldCheck, "qa", () => goToSection("qa")],
             ["Research Console", Terminal, "research", () => goToSection("research")],
@@ -393,6 +395,8 @@ export default function ClinicalResearchConsole({
             <p>Existing Three.js reconstruction and mesh diagnostics are preserved below.</p>
             <div id="cw-viewer-slot" className="cw-viewer-filter cw-viewer-only-3d">{surfaceContent ?? viewerContent}</div>
           </div>
+        ) : section === "anatomy" ? (
+          <AdvancedAnatomyLab result={result} backend={backend} />
         ) : section === "metrics" ? (
           <div className="cw-mode-panel">
             <div className="cw-mode-title">QUANTIFICATION</div>
