@@ -80,6 +80,14 @@ def build_structured_measurements(*, result: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_dicom_seg_result(result: dict[str, Any]) -> dict[str, Any]:
+    actual = result.get("dicom_seg_result")
+    if isinstance(actual, dict) and actual.get("status") == "CREATED":
+        return {
+            **actual,
+            "compatibility": DICOM_SEG_COMPATIBILITY,
+            "schema_version": SCHEMA_VERSION,
+            "modality": "SEG",
+        }
     return {
         "compatibility": DICOM_SEG_COMPATIBILITY,
         "schema_version": SCHEMA_VERSION,
@@ -104,6 +112,14 @@ def build_dicom_seg_result(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_dicom_sr_result(result: dict[str, Any]) -> dict[str, Any]:
+    actual = result.get("dicom_sr_result")
+    if isinstance(actual, dict) and actual.get("status") == "CREATED":
+        return {
+            **actual,
+            "compatibility": DICOM_SR_COMPATIBILITY,
+            "schema_version": SCHEMA_VERSION,
+            "modality": "SR",
+        }
     quality = result.get("measurement_quality") or {}
     structured = build_structured_measurements(result=result)
     return {
