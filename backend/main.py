@@ -1138,6 +1138,56 @@ async def segment(
                     )
                 )
 
+            if result_payload.get("source_type") == "DICOM":
+                dicom_root = (
+                    extraction_root / "dicom"
+                    if (extraction_root / "dicom").exists()
+                    else extraction_root / "dicom_files"
+                )
+                source_store = case_path / "dicom_source"
+                anonymize_directory(dicom_root, source_store, salt=case_id)
+                (case_path / "dicom_metadata.json").write_text(
+                    json.dumps(series_metadata(source_store), indent=2, sort_keys=True),
+                    encoding="utf-8",
+                )
+                source_files = collect_dicom_files(source_store)
+                mask_array = sitk.GetArrayFromImage(mask_image).astype("uint8", copy=False)
+                seg_info = create_segmentation(
+                    source_files=source_files,
+                    mask_array_zyx=mask_array,
+                    label_names={
+                        int(metric["label"]): str(metric["name"])
+                        for metric in result_payload.get("label_metrics", [])
+                    },
+                    output_path=case_path / "segmentation.dcm",
+                    algorithm_name=str(
+                        result_payload.get("model_provenance", {}).get(
+                            "name", "RadAssist 3D"
+                        )
+                    ),
+                )
+                sr_info = create_structured_report(
+                    source_files=source_files,
+                    measurements=(result_payload.get("structured_measurements") or {}).get(
+                        "measurements", []
+                    ),
+                    target=target,
+                    output_path=case_path / "structured_report.dcm",
+                )
+                result_payload["dicom_seg_result"] = {
+                    **(result_payload.get("dicom_seg_result") or {}),
+                    **seg_info,
+                    "status": "CREATED",
+                }
+                result_payload["dicom_sr_result"] = {
+                    **(result_payload.get("dicom_sr_result") or {}),
+                    **sr_info,
+                    "status": "CREATED",
+                }
+                result_payload.setdefault("warnings", []).append(
+                    "DICOM outputs use a de-identified source copy; pixel-level burned-in identifiers are not automatically removed."
+                )
+
             input_validation = validate_input_contract(
                 source_type=str(result_payload.get("source_type", "UNKNOWN")),
                 modality=str(result_payload.get("modality", "UNKNOWN")),
