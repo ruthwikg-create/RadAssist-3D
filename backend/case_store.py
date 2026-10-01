@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 
 CASE_ROOT = Path(
@@ -16,6 +22,27 @@ CASE_ROOT = Path(
 )
 
 CASE_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if np is not None:
+        if isinstance(value, np.ndarray):
+            return _json_safe(value.tolist())
+        if isinstance(value, np.generic):
+            return _json_safe(value.item())
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item) for item in value]
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
 def case_dir(case_id: str) -> Path:
@@ -33,8 +60,9 @@ def create_case(case_id: str) -> Path:
 
 def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
+    safe_payload = _json_safe(payload)
     tmp.write_text(
-        json.dumps(payload, indent=2),
+        json.dumps(safe_payload, indent=2, allow_nan=False),
         encoding="utf-8",
     )
     os.replace(tmp, path)

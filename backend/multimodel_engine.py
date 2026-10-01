@@ -482,6 +482,27 @@ class MultiModelInferenceEngine:
 
         return mask
 
+    @staticmethod
+    def _heart_slice_qa(mask: sitk.Image) -> dict[str, Any]:
+        array = sitk.GetArrayFromImage(mask)
+        if array.ndim != 3:
+            return {"status": "FAIL", "slice_count": 0, "foreground_slices": 0}
+        slice_count = int(array.shape[0])
+        foreground_slices = int(np.count_nonzero(np.any(array > 0, axis=(1, 2))))
+        coverage = {}
+        for label in (1, 2, 3):
+            present = np.any(array == label, axis=(1, 2))
+            coverage[str(label)] = round(100.0 * int(present.sum()) / slice_count, 2) if slice_count else 0.0
+        status = "PASS" if 0 < foreground_slices < slice_count else "REVIEW"
+        return {
+            "status": status,
+            "slice_count": slice_count,
+            "foreground_slices": foreground_slices,
+            "foreground_slice_fraction_pct": round(100.0 * foreground_slices / slice_count, 2) if slice_count else 0.0,
+            "label_slice_coverage_pct": coverage,
+            "note": "Structural sanity check only; not an accuracy metric.",
+        }
+
     def _prostate_predict(
         self,
         image: sitk.Image,
@@ -512,6 +533,8 @@ class MultiModelInferenceEngine:
             )
 
         start = perf_counter()
+        stage_timings: dict[str, float] = {}
+        stage_start = perf_counter()
 
         loaded = self._load_input(
             input_paths,
@@ -519,6 +542,8 @@ class MultiModelInferenceEngine:
             target,
         )
 
+        stage_timings["input_load"] = round(perf_counter() - stage_start, 4)
+        stage_start = perf_counter()
         image = loaded.image
 
         original_spacing = [
@@ -542,12 +567,17 @@ class MultiModelInferenceEngine:
                     image
                 )
 
-                # Post-process independently per anatomical label. The raw model
+        stage_timings["inference"] = round(perf_counter() - stage_start, 4)
+        stage_start = perf_counter()
+
+        # Post-process independently per anatomical label. The raw model
         # prediction is preserved only in provenance/QA; quantitative output
         # uses the cleaned labelmap to prevent fragmented islands dominating
         # meshes and measurements.
         raw_mask = mask
         mask, component_cleanup = _largest_component_per_label(mask)
+        stage_timings["postprocess"] = round(perf_counter() - stage_start, 4)
+        stage_start = perf_counter()
 
         label_meshes: dict[str, Any] = {}
         label_mesh_steps: list[int] = []
@@ -625,6 +655,8 @@ class MultiModelInferenceEngine:
                 TARGETS[target]["labels"],
             )
         )
+
+        heart_slice_qa = self._heart_slice_qa(mask) if target == "heart" else None
 
         # Per-label connected-component QA. This is review metadata only;
         # it does not modify the original segmentation mask.
@@ -804,13 +836,7 @@ class MultiModelInferenceEngine:
                 },
             }
         else:
-            validation_per_class = {
-                "central gland": 0.88,
-                "peripheral zone": 0.75,
-            }
-
-            # These are bundle-level reference metrics,
-            # not patient-specific accuracy.
+            validation_per_class = {}
             validation_dice = None
 
             warnings = [
@@ -820,9 +846,7 @@ class MultiModelInferenceEngine:
                     "diagnostic use."
                 ),
                 (
-                    "Reported Dice values are "
-                    "bundle-level validation metrics, "
-                    "not patient-specific accuracy."
+                    "No patient-specific Dice/IoU is computed during inference; use the offline reference-mask validator."
                 ),
             ]
             raw_provenance = model.provenance()
@@ -878,9 +902,8 @@ class MultiModelInferenceEngine:
                 },
             }
 
-        elapsed = (
-            perf_counter() - start
-        )
+        stage_timings["metrics_and_mesh"] = round(perf_counter() - stage_start, 4)
+        elapsed = perf_counter() - start
 
         case_id = (
             case_directory.name
@@ -958,6 +981,8 @@ class MultiModelInferenceEngine:
                 "cleanup": component_cleanup,
             },
 
+            "heart_slice_qa": heart_slice_qa,
+
             "mesh": mesh,
 
             "original_spacing_mm": (
@@ -968,10 +993,8 @@ class MultiModelInferenceEngine:
                 original_dimensions
             ),
 
-            "processing_seconds": round(
-                elapsed,
-                3,
-            ),
+            "processing_seconds": round(elapsed, 3),
+            "stage_timings_seconds": stage_timings,
 
             "mesh_step_size": (
                 actual_step

@@ -54,6 +54,7 @@ export async function fetchModels(): Promise<ModelsResponse> {
 export function segmentFiles(
   target: string,
   files: File[],
+  modality = "AUTO",
   onProgress?: (progress: number) => void,
 ): Promise<CaseResult> {
   return new Promise(
@@ -63,6 +64,11 @@ export function segmentFiles(
       form.append(
         "target",
         target,
+      );
+
+      form.append(
+        "modality",
+        modality,
       );
 
       files.forEach(
@@ -478,6 +484,18 @@ export function caseBundleUrl(
 
 export function caseReportUrl(caseId: string) {
   return `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseId)}/report`;
+}
+
+export function caseDicomMetadataUrl(caseId: string) {
+  return `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseId)}/dicom-metadata`;
+}
+
+export function caseDicomSegUrl(caseId: string) {
+  return `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseId)}/dicom-seg`;
+}
+
+export function caseDicomSrUrl(caseId: string) {
+  return `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseId)}/dicom-sr`;
 }
 
 export async function downloadApiFile(

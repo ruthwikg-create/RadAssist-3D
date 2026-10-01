@@ -51,6 +51,13 @@ export type MeasurementQuality = {
   centroid_mm: number[] | null;
   intensity_domain: string;
   hu_calibrated: boolean;
+  mean_intensity?: number | null;
+  std_intensity?: number | null;
+  min_intensity?: number | null;
+  max_intensity?: number | null;
+  median_intensity?: number | null;
+  p05_intensity?: number | null;
+  p95_intensity?: number | null;
   rescale_slope: number | null;
   rescale_intercept: number | null;
   flags: string[];
@@ -116,6 +123,15 @@ export type CaseResult = {
 
   label_component_qa?: Record<string, LabelComponentQA>;
 
+  heart_slice_qa?: {
+    status: string;
+    slice_count: number;
+    foreground_slices: number;
+    foreground_slice_fraction_pct?: number;
+    label_slice_coverage_pct?: Record<string, number>;
+    note?: string;
+  };
+
   measurement_quality?: MeasurementQuality;
 
   model_provenance?: ModelProvenance;
@@ -126,6 +142,7 @@ export type CaseResult = {
   original_dimensions: number[];
 
   processing_seconds: number;
+  stage_timings_seconds?: Record<string, number>;
   mesh_step_size: number;
 
   preview: {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import tempfile
@@ -18,9 +19,10 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, ORJSONResponse
+from fastapi.responses import FileResponse, ORJSONResponse, Response
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
+import SimpleITK as sitk
 
 try:
     from .case_store import (
@@ -42,6 +44,7 @@ try:
     from .prostate_model_adapter import ProstateMRIAdapter
     from .multimodel_engine import MultiModelInferenceEngine
     from .engineering import append_audit_event, build_provenance, validate_input_contract, write_report_bundle
+    from .analysis_registry import normalize_modality, validate_segmentation_protocol, public_registry
 except ImportError:
     from case_store import (
         case_dir,
@@ -62,6 +65,7 @@ except ImportError:
     from prostate_model_adapter import ProstateMRIAdapter
     from multimodel_engine import MultiModelInferenceEngine
     from engineering import append_audit_event, build_provenance, validate_input_contract, write_report_bundle
+    from analysis_registry import normalize_modality, validate_segmentation_protocol, public_registry
 
 
 logging.basicConfig(
@@ -449,6 +453,7 @@ class SegmentResponse(BaseModel):
     original_dimensions: list[int]
 
     processing_seconds: float
+    stage_timings_seconds: dict[str, float] = Field(default_factory=dict)
     mesh_step_size: int
 
     preview: PreviewResponse
@@ -606,12 +611,16 @@ async def health(
             ],
         }
 
+    expected_targets = set(SUPPORTED_TARGETS)
+    loaded_targets = set(engines)
+    health_status = (
+        "ok"
+        if loaded_targets == expected_targets
+        else "degraded"
+    )
+
     return HealthResponse(
-        status=(
-            "ok"
-            if bool(engines)
-            else "degraded"
-        ),
+        status=health_status,
         service="radassist-3d-backend",
         version="1.4.0",
         device=str(DEVICE),
@@ -834,6 +843,9 @@ async def get_case_bundle(
             / "segmentation_mask.nii.gz",
             directory / "report.json",
             directory / "audit.jsonl",
+            directory / "dicom_metadata.json",
+            directory / "segmentation.dcm",
+            directory / "structured_report.dcm",
         ]
 
         existing = [
@@ -896,6 +908,7 @@ async def get_case_report(case_id: str) -> FileResponse:
 async def segment(
     request: Request,
     target: str = Form("spleen"),
+    modality: str = Form("AUTO"),
     files: list[UploadFile] = File(
         ...,
         description=(
@@ -913,6 +926,7 @@ async def segment(
         )
 
     target = target.strip().lower()
+    requested_modality = normalize_modality(modality)
 
     if target not in SUPPORTED_TARGETS:
         raise HTTPException(
@@ -922,6 +936,15 @@ async def segment(
                 "Choose spleen, heart, or prostate."
             ),
         )
+
+    # ------------------------------------------------------------
+    # Protocol validation
+    # ------------------------------------------------------------
+
+    try:
+        resolved_modality, _ = validate_segmentation_protocol(target, requested_modality)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     # ------------------------------------------------------------
     # File validation
@@ -1102,7 +1125,7 @@ async def segment(
             # Existing validated Spleen workflow.
             if target == "spleen":
 
-                result_payload, _, _ = (
+                result_payload, source_image, mask_image = (
                     await run_in_threadpool(
                         engine.segment,
                         input_paths,
@@ -1114,7 +1137,7 @@ async def segment(
             # Heart / Prostate multimodel workflow.
             else:
 
-                result_payload, _, _ = (
+                result_payload, source_image, mask_image = (
                     await run_in_threadpool(
                         engine.segment,
                         target,
@@ -1122,6 +1145,47 @@ async def segment(
                         extraction_root,
                         case_path,
                     )
+                )
+
+            generated_dicom_seg: dict[str, Any] | None = None
+            generated_dicom_sr: dict[str, Any] | None = None
+
+            if result_payload.get("source_type") == "DICOM":
+                dicom_root = (
+                    extraction_root / "dicom"
+                    if (extraction_root / "dicom").exists()
+                    else extraction_root / "dicom_files"
+                )
+                source_store = case_path / "dicom_source"
+                anonymize_directory(dicom_root, source_store, salt=case_id)
+                (case_path / "dicom_metadata.json").write_text(
+                    json.dumps(series_metadata(source_store), indent=2, sort_keys=True),
+                    encoding="utf-8",
+                )
+                source_files = collect_dicom_files(source_store)
+                mask_array = sitk.GetArrayFromImage(mask_image).astype("uint8", copy=False)
+                seg_info = create_segmentation(
+                    source_files=source_files,
+                    mask_array_zyx=mask_array,
+                    label_names={
+                        int(metric["label"]): str(metric["name"])
+                        for metric in result_payload.get("label_metrics", [])
+                    },
+                    output_path=case_path / "segmentation.dcm",
+                    algorithm_name=str(
+                        result_payload.get("model_provenance", {}).get(
+                            "name", "RadAssist 3D"
+                        )
+                    ),
+                )
+                generated_dicom_seg = {
+                    **(result_payload.get("dicom_seg_result") or {}),
+                    **seg_info,
+                    "status": "CREATED",
+                }
+                result_payload["dicom_seg_result"] = generated_dicom_seg
+                result_payload.setdefault("warnings", []).append(
+                    "DICOM outputs use a de-identified source copy; pixel-level burned-in identifiers are not automatically removed."
                 )
 
             input_validation = validate_input_contract(
@@ -1138,8 +1202,30 @@ async def segment(
             provenance_record = build_provenance(result_payload)
             result_payload["provenance_record"] = provenance_record
             result_payload["structured_measurements"] = provenance_record["structured_measurements"]
-            result_payload["dicom_seg_result"] = provenance_record["dicom_seg"]
-            result_payload["dicom_sr_result"] = provenance_record["dicom_sr"]
+            result_payload["dicom_seg_result"] = generated_dicom_seg or provenance_record["dicom_seg"]
+            result_payload["dicom_sr_result"] = generated_dicom_sr or provenance_record["dicom_sr"]
+            result_payload["uncertainty_status"] = provenance_record["structured_measurements"]["uncertainty_status"]
+
+            if result_payload.get("source_type") == "DICOM":
+                source_files = collect_dicom_files(case_path / "dicom_source")
+                sr_info = create_structured_report(
+                    source_files=source_files,
+                    measurements=provenance_record["structured_measurements"]["measurements"],
+                    target=target,
+                    output_path=case_path / "structured_report.dcm",
+                )
+                generated_dicom_sr = {
+                    **(result_payload.get("dicom_sr_result") or {}),
+                    **sr_info,
+                    "status": "CREATED",
+                }
+                result_payload["dicom_sr_result"] = generated_dicom_sr
+
+            # Rebuild provenance after all DICOM artifacts exist so report.json
+            # records the actual generated SEG/SR files rather than placeholders.
+            provenance_record = build_provenance(result_payload)
+            result_payload["provenance_record"] = provenance_record
+            result_payload["structured_measurements"] = provenance_record["structured_measurements"]
             result_payload["uncertainty_status"] = provenance_record["structured_measurements"]["uncertainty_status"]
 
             write_report_bundle(case_path, result_payload)
@@ -1150,6 +1236,7 @@ async def segment(
                 target=target,
                 source_type=result_payload.get("source_type"),
                 modality=result_payload.get("modality"),
+                requested_modality=resolved_modality,
                 input_validation=input_validation,
                 qa_status=(result_payload.get("measurement_quality") or {}).get("status"),
             )
@@ -1208,6 +1295,134 @@ async def segment(
         ) from exc
 
 
+class AssistantRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+
+
+@app.post("/api/v1/cases/{case_id}/assistant")
+async def case_assistant(case_id: str, body: AssistantRequest) -> dict[str, Any]:
+    try:
+        result = load_case_result(case_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Case not found.") from exc
+    try:
+        return answer_ai(result, body.question)
+    except Exception as exc:
+        logger.exception("AI assistant request failed for %s", case_id)
+        raise HTTPException(status_code=502, detail=f"AI assistant provider failed: {exc}") from exc
+
+
+@app.get("/api/v1/dicomweb/status")
+async def dicomweb_status() -> dict[str, Any]:
+    client = DicomWebClient()
+    return {
+        "configured": client.configured,
+        "base_url_configured": client.configured,
+        "token_configured": bool(client.token),
+        "warning": None if client.configured else "Set RADASSIST_DICOMWEB_URL to connect to a PACS/DICOMweb server.",
+    }
+
+
+@app.get("/api/v1/dicomweb/studies")
+async def dicomweb_studies(
+    study_instance_uid: str | None = None,
+    patient_id: str | None = None,
+) -> Any:
+    client = DicomWebClient()
+    try:
+        query = {}
+        if study_instance_uid:
+            query["StudyInstanceUID"] = study_instance_uid
+        if patient_id:
+            query["PatientID"] = patient_id
+        return client.qido_studies(query)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"DICOMweb QIDO request failed: {exc}") from exc
+
+
+@app.get("/api/v1/dicomweb/studies/{study_instance_uid}/series")
+async def dicomweb_series(study_instance_uid: str) -> Any:
+    client = DicomWebClient()
+    try:
+        return client.qido_series(study_instance_uid)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"DICOMweb QIDO request failed: {exc}") from exc
+
+
+@app.get("/api/v1/dicomweb/studies/{study_instance_uid}/series/{series_instance_uid}/instances/{sop_instance_uid}")
+async def dicomweb_instance(study_instance_uid: str, series_instance_uid: str, sop_instance_uid: str) -> Response:
+    client = DicomWebClient()
+    try:
+        payload = client.wado_instance(study_instance_uid, series_instance_uid, sop_instance_uid)
+        return Response(content=payload, media_type="application/dicom")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"DICOMweb WADO request failed: {exc}") from exc
+
+
+@app.post("/api/v1/dicomweb/studies")
+async def dicomweb_stow(file: UploadFile = File(...)) -> dict[str, Any]:
+    client = DicomWebClient()
+    try:
+        payload = await file.read()
+        return {"status": "STORED", "response": client.stow(payload)}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"DICOMweb STOW request failed: {exc}") from exc
+
+
+@app.get("/api/v1/cases/{case_id}/dicom-metadata")
+async def get_case_dicom_metadata(case_id: str) -> dict[str, Any]:
+    path = _absolute_case_file(case_id, "dicom_metadata.json")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="DICOM metadata is not available for this case.")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@app.get("/api/v1/cases/{case_id}/dicom-seg")
+async def get_case_dicom_seg(case_id: str) -> FileResponse:
+    path = _absolute_case_file(case_id, "segmentation.dcm")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="DICOM SEG is not available for this case.")
+    return FileResponse(path, media_type="application/dicom", filename="radassist_segmentation.dcm")
+
+
+@app.get("/api/v1/cases/{case_id}/dicom-sr")
+async def get_case_dicom_sr(case_id: str) -> FileResponse:
+    path = _absolute_case_file(case_id, "structured_report.dcm")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="DICOM SR is not available for this case.")
+    return FileResponse(path, media_type="application/dicom", filename="radassist_structured_report.dcm")
+
+
+@app.post("/api/v1/dicom/anonymize")
+async def anonymize_dicom(files: list[UploadFile] = File(...)) -> Response:
+    if not files:
+        raise HTTPException(status_code=400, detail="No DICOM files were supplied.")
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="radassist_deid_") as temp_dir:
+        root = Path(temp_dir) / "input"
+        out = Path(temp_dir) / "output"
+        root.mkdir()
+        total = 0
+        for index, upload in enumerate(files):
+            name = Path(upload.filename or f"input_{index}.dcm").name
+            destination = root / name
+            total = await _save_upload(upload, destination, total)
+        anonymize_directory(root, out, salt=uuid.uuid4().hex)
+        return Response(
+            content=zip_directory(out),
+            media_type="application/zip",
+            headers={"Content-Disposition": 'attachment; filename="radassist_anonymized_dicom.zip"'},
+        )
+
+
 # ---------------------------------------------------------------------------
 # Synthetic demo
 # ---------------------------------------------------------------------------
@@ -1246,6 +1461,32 @@ async def demo(
                 create_demo_case,
                 case_path,
             )
+        )
+
+        # Keep demo cases on the same structured-result/report
+        # architecture as real segmentation cases. Demo input is
+        # intentionally synthetic, so it bypasses the clinical
+        # input contract while retaining provenance and QA metadata.
+        provenance_record = build_provenance(result_payload)
+        result_payload["provenance_record"] = provenance_record
+        result_payload["structured_measurements"] = (
+            provenance_record["structured_measurements"]
+        )
+        result_payload["dicom_seg_result"] = provenance_record["dicom_seg"]
+        result_payload["dicom_sr_result"] = provenance_record["dicom_sr"]
+        result_payload["uncertainty_status"] = (
+            provenance_record["structured_measurements"]["uncertainty_status"]
+        )
+
+        write_report_bundle(case_path, result_payload)
+        append_audit_event(
+            case_path,
+            "DEMO_CASE_CREATED",
+            request_id=case_id,
+            target=result_payload.get("target"),
+            source_type=result_payload.get("source_type"),
+            modality=result_payload.get("modality"),
+            qa_status=(result_payload.get("measurement_quality") or {}).get("status"),
         )
 
         save_case_result(

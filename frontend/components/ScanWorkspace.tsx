@@ -27,6 +27,8 @@ import DemoMPRViewer from "./DemoMPRViewer";
 import Three3DMeshViewer from "./Three3DMeshViewer";
 import MetricsPanel from "./MetricsPanel";
 import ViewerErrorBoundary from "./ViewerErrorBoundary";
+import AnalysisInspector from "./AnalysisInspector";
+import DicomMetadataPanel from "./DicomMetadataPanel";
 
 import type {
   BackendHealth,
@@ -34,12 +36,15 @@ import type {
   CaseSummary,
   ModelInfo,
 } from "../lib/types";
+import { MODALITY_REGISTRY, SEGMENTATION_PROTOCOLS, type ImagingModality } from "../lib/modalityRegistry";
 
 import {
   API_BASE_URL,
   caseBundleUrl,
   caseReportUrl,
   caseMaskUrl,
+  caseDicomSegUrl,
+  caseDicomSrUrl,
   createDemoCase,
   deleteCase,
   downloadApiFile,
@@ -318,6 +323,9 @@ export default function ScanWorkspace() {
   const [selectedTarget, setSelectedTarget] =
     useState<Target>("spleen");
 
+  const [selectedModality, setSelectedModality] =
+    useState<ImagingModality>("CT");
+
   const [stage, setStage] =
     useState<Stage>("ingest");
 
@@ -432,6 +440,9 @@ export default function ScanWorkspace() {
       target,
     );
 
+    const protocol = SEGMENTATION_PROTOCOLS[target];
+    setSelectedModality(protocol.modalities[0]);
+
     setError(null);
 
     setResult(null);
@@ -465,6 +476,7 @@ export default function ScanWorkspace() {
         await segmentFiles(
           selectedTarget,
           files,
+          selectedModality,
           (value: number) => {
             if (value >= 100) {
               setProgress(99);
@@ -634,6 +646,9 @@ export default function ScanWorkspace() {
         setSelectedTarget(
           body.target,
         );
+
+        const protocol = SEGMENTATION_PROTOCOLS[body.target];
+        setSelectedModality(protocol.modalities[0]);
       }
 
       setStage("render");
@@ -923,6 +938,32 @@ export default function ScanWorkspace() {
               </div>
 
               <div className="mt-4">
+                <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Imaging protocol
+                </div>
+
+                <div className="mb-3 rounded-xl border border-white/[0.06] bg-black/10 p-2.5">
+                  <label htmlFor="radassist-modality" className="mb-1.5 block text-[8px] font-bold uppercase tracking-[0.12em] text-slate-600">
+                    Modality
+                  </label>
+                  <select
+                    id="radassist-modality"
+                    value={selectedModality}
+                    disabled={working}
+                    onChange={(event) => setSelectedModality(event.target.value as ImagingModality)}
+                    className="w-full rounded-lg border border-white/[0.07] bg-[#0a1117] px-2.5 py-2 text-[10px] font-semibold text-slate-200 outline-none transition focus:border-teal-300/30"
+                  >
+                    {MODALITY_REGISTRY.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label} · {item.status === "available" ? "analysis enabled" : "viewer / integration"}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="mt-1.5 text-[8px] leading-4 text-slate-600">
+                    Segmentation is enabled only where a documented model protocol exists.
+                  </div>
+                </div>
+
                 <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   Segmentation model
                 </div>
@@ -1549,6 +1590,30 @@ export default function ScanWorkspace() {
                     id="qa"
                     className="scroll-mt-32"
                   />
+
+                  <AnalysisInspector result={result} />
+                  <DicomMetadataPanel caseId={result.request_id} enabled={result.source_type === "DICOM"} />
+                  {result.source_type === "DICOM" && result.persisted !== false ? (
+                    <div className="ra-inspector-card p-3">
+                      <div className="ra-section-label">DICOM outputs</div>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          className="rounded-md border border-white/10 px-2 py-2 text-[9px] text-slate-300"
+                          onClick={() => void downloadArtifact(caseDicomSegUrl(result.request_id), "radassist_segmentation.dcm", setError)}
+                        >
+                          Download SEG
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-md border border-white/10 px-2 py-2 text-[9px] text-slate-300"
+                          onClick={() => void downloadArtifact(caseDicomSrUrl(result.request_id), "radassist_structured_report.dcm", setError)}
+                        >
+                          Download SR
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="ra-inspector-card ra-enter ra-enter-3 p-3">
                     <div className="flex items-center justify-between gap-3">
