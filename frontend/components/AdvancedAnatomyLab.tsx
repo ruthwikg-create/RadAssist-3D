@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Activity, Brain, CheckCircle2, CircleDot, Crosshair, Dna, Eye, FileImage,
+  Activity, Brain, CircleDot, Crosshair, Dna, Eye, FileImage,
   FlaskConical, Layers3, Microscope, ShieldAlert, Stethoscope, Target, TriangleAlert
 } from "lucide-react";
 import type { CaseResult, BackendHealth } from "../lib/types";
