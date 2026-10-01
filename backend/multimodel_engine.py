@@ -252,6 +252,48 @@ class MultiModelInferenceEngine:
         }
 
     @staticmethod
+    def _model_compatibility(
+        target: str,
+        source_type: str,
+        dimensions: list[int],
+        spacing_mm: list[float],
+    ) -> dict[str, Any]:
+        """Report input/model compatibility without pretending to validate clinical series identity."""
+        if target != "heart":
+            return {
+                "status": "NOT_APPLICABLE",
+                "reason": "No additional series-level compatibility gate is defined for this model.",
+            }
+
+        warnings: list[str] = []
+        if len(dimensions) != 3 or len(spacing_mm) != 3:
+            warnings.append("The heart model requires a 3D volume with three spatial dimensions.")
+        else:
+            x, y, z = dimensions
+            if min(x, y) < 128:
+                warnings.append("In-plane dimensions are unusually small for the 256×256 cardiac model input.")
+            if z < 5:
+                warnings.append("Very few slices are available for a short-axis cardiac volume.")
+            if any(value <= 0 for value in spacing_mm):
+                warnings.append("One or more voxel spacings are invalid.")
+
+        if source_type.upper() == "NIFTI":
+            warnings.append("NIfTI does not reliably encode the clinical MR series type; verify that the volume is cardiac short-axis MR.")
+        else:
+            warnings.append("Verify that the selected DICOM series is cardiac short-axis MR; this application does not infer sequence identity from appearance alone.")
+
+        return {
+            "status": "REVIEW_REQUIRED",
+            "model_domain": "Cardiac MRI ventricular short-axis research model",
+            "expected_plane": "Short-axis cardiac MR",
+            "expected_inference_roi": [256, 256],
+            "source_type": source_type,
+            "dimensions": dimensions,
+            "spacing_mm": spacing_mm,
+            "warnings": warnings,
+        }
+
+    @staticmethod
     def _centroid_mm(
         mask: sitk.Image,
     ) -> list[float] | None:
@@ -532,6 +574,13 @@ class MultiModelInferenceEngine:
             int(v)
             for v in image.GetSize()
         ]
+
+        model_compatibility = self._model_compatibility(
+            target,
+            loaded.source_type,
+            original_dimensions,
+            original_spacing,
+        )
 
         # Keep model execution serialized per model.
         with self.locks[target]:
@@ -958,6 +1007,8 @@ class MultiModelInferenceEngine:
             "model_provenance": (
                 provenance
             ),
+
+            "model_compatibility": model_compatibility,
 
             "label_metrics": label_metrics,
 
