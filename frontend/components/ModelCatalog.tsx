@@ -74,7 +74,7 @@ export default function ModelCatalog({
   onSelect: (target: Target) => void;
 }) {
   const available = Object.values(models).filter((model) => model.loaded).length;
-  const [filter, setFilter] = useState<"ALL" | "CT" | "MR" | "LESION">("ALL");
+  const [activeFilter, setActiveFilter] = useState<"ALL" | "CT" | "MR" | "LESION">("ALL");
   const filters = [
     { key: "ALL", label: "ALL" },
     { key: "CT", label: "CT" },
@@ -95,14 +95,14 @@ export default function ModelCatalog({
         </div>
       </div>
       <div className="cw-catalog-filters">
-        {filters.map((filter) => (
+        {filters.map((filterOption) => (
           <button
-            key={filter.key}
+            key={filterOption.key}
             type="button"
-            className={`cw-catalog-filter ${filter === filter.key ? "active" : ""}`}
-            onClick={() => setFilter(filter.key)}
+            className={`cw-catalog-filter ${activeFilter === filterOption.key ? "active" : ""}`}
+            onClick={() => setActiveFilter(filterOption.key)}
           >
-            {filter.label}
+            {filterOption.label}
           </button>
         ))}
       </div>
@@ -117,7 +117,7 @@ export default function ModelCatalog({
               type="button"
               data-filter={item.kind === "LESION" ? "LESION" : item.modality === "CT" ? "CT" : "MR"}
               className={`cw-model-card ${selectedTarget === item.target ? "active" : ""}`}
-              hidden={filter !== "ALL" && (item.kind === "LESION" ? "LESION" : item.modality === "CT" ? "CT" : "MR") !== filter}
+              hidden={activeFilter !== "ALL" && (item.kind === "LESION" ? "LESION" : item.modality === "CT" ? "CT" : "MR") !== activeFilter}
               onClick={() => onSelect(item.target)}
               disabled={working}
             >
