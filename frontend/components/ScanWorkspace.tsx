@@ -908,6 +908,38 @@ export default function ScanWorkspace() {
           </div>
         ) : null
       }
+      mprContent={
+        result ? (
+          <ViewerErrorBoundary label="MPR">
+            {result.is_demo ? (
+              <DemoMPRViewer />
+            ) : (
+              <CornerstoneMPRViewer volumeUrl={protectedVolumeUrl ?? ""} caseId={result.request_id} />
+            )}
+          </ViewerErrorBoundary>
+        ) : null
+      }
+      surfaceContent={
+        result ? (
+          <ViewerErrorBoundary label="3D">
+            <Three3DMeshViewer
+              mesh={result.mesh}
+              labelMeshes={result.label_meshes}
+              meshDiagnostics={result.mesh_diagnostics}
+              target={result.target}
+            />
+          </ViewerErrorBoundary>
+        ) : null
+      }
+      metricsContent={
+        result ? (
+          <div className="cw-viewer-metrics">
+            <MetricsPanel result={result} />
+            <AdvancedAnalyticsPanel result={result} />
+            {comparison ? <CaseComparisonPanel current={result} previous={comparison} /> : null}
+          </div>
+        ) : null
+      }
     />
   );
 }
