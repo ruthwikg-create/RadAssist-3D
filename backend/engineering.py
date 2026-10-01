@@ -2,13 +2,42 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
 SCHEMA_VERSION = "radassist-result-1.0"
 DICOM_SEG_COMPATIBILITY = "segmentation-labelmap-reference-architecture"
 DICOM_SR_COMPATIBILITY = "TID-1500-compatible-measurement-architecture"
+
+
+def _json_safe(value: Any) -> Any:
+    """Convert scientific Python values into strict JSON-safe primitives."""
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if np is not None:
+        if isinstance(value, np.ndarray):
+            return _json_safe(value.tolist())
+        if isinstance(value, np.generic):
+            return _json_safe(value.item())
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item) for item in value]
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
 
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
@@ -16,6 +45,7 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
 
 def validate_input_contract(*, source_type: str, modality: str, dimensions: list[int], spacing_mm: list[float]) -> dict[str, Any]:
     errors: list[str] = []
@@ -28,6 +58,7 @@ def validate_input_contract(*, source_type: str, modality: str, dimensions: list
     if modality not in {"CT", "MR", "UNKNOWN"}:
         errors.append("INPUT_MODALITY_UNSUPPORTED")
     return {"status": "PASS" if not errors else "FAIL", "errors": errors}
+
 
 def build_structured_measurements(*, result: dict[str, Any]) -> dict[str, Any]:
     quality = result.get("measurement_quality") or {}
@@ -47,16 +78,30 @@ def build_structured_measurements(*, result: dict[str, Any]) -> dict[str, Any]:
         },
     }
 
+
 def build_dicom_seg_result(result: dict[str, Any]) -> dict[str, Any]:
     return {
         "compatibility": DICOM_SEG_COMPATIBILITY,
         "schema_version": SCHEMA_VERSION,
         "modality": "SEG",
-        "source_reference": {"source_type": result.get("source_type"), "original_modality": result.get("modality"), "dimensions": result.get("original_dimensions"), "spacing_mm": result.get("original_spacing_mm")},
-        "segments": [{"segment_number": metric.get("label"), "segment_label": metric.get("name"), "voxel_count": metric.get("voxel_count")} for metric in result.get("label_metrics", [])],
+        "source_reference": {
+            "source_type": result.get("source_type"),
+            "original_modality": result.get("modality"),
+            "dimensions": result.get("original_dimensions"),
+            "spacing_mm": result.get("original_spacing_mm"),
+        },
+        "segments": [
+            {
+                "segment_number": metric.get("label"),
+                "segment_label": metric.get("name"),
+                "voxel_count": metric.get("voxel_count"),
+            }
+            for metric in result.get("label_metrics", [])
+        ],
         "pixel_data_artifact": "segmentation_mask.nii.gz",
         "status": "ARCHITECTURE_ONLY_NOT_DICOM_FILE",
     }
+
 
 def build_dicom_sr_result(result: dict[str, Any]) -> dict[str, Any]:
     quality = result.get("measurement_quality") or {}
@@ -64,16 +109,32 @@ def build_dicom_sr_result(result: dict[str, Any]) -> dict[str, Any]:
         "compatibility": DICOM_SR_COMPATIBILITY,
         "schema_version": SCHEMA_VERSION,
         "modality": "SR",
-        "measurement_groups": [{"tracking_identifier": f"RadAssist:{result.get('request_id')}", "finding": result.get("target"), "measurements": build_structured_measurements(result)["measurements"], "qa": {"status": quality.get("status"), "flags": quality.get("flags", [])}}],
+        "measurement_groups": [
+            {
+                "tracking_identifier": f"RadAssist:{result.get('request_id')}",
+                "finding": result.get("target"),
+                "measurements": build_structured_measurements(result)["measurements"],
+                "qa": {
+                    "status": quality.get("status"),
+                    "flags": quality.get("flags", []),
+                },
+            }
+        ],
         "status": "ARCHITECTURE_ONLY_NOT_DICOM_FILE",
     }
+
 
 def build_provenance(result: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "request_id": result.get("request_id"),
-        "source": {"type": result.get("source_type"), "modality": result.get("modality"), "dimensions": result.get("original_dimensions"), "spacing_mm": result.get("original_spacing_mm")},
+        "source": {
+            "type": result.get("source_type"),
+            "modality": result.get("modality"),
+            "dimensions": result.get("original_dimensions"),
+            "spacing_mm": result.get("original_spacing_mm"),
+        },
         "model": result.get("model_provenance", {}),
         "measurement": result.get("measurement_quality", {}),
         "structured_measurements": build_structured_measurements(result),
@@ -81,10 +142,20 @@ def build_provenance(result: dict[str, Any]) -> dict[str, Any]:
         "dicom_sr": build_dicom_sr_result(result),
     }
 
+
 def write_report_bundle(case_directory: Path, result: dict[str, Any]) -> None:
-    (case_directory / "report.json").write_text(json.dumps(build_provenance(result), indent=2, sort_keys=True), encoding="utf-8")
+    report = _json_safe(build_provenance(result))
+    (case_directory / "report.json").write_text(
+        json.dumps(report, indent=2, sort_keys=True, allow_nan=False),
+        encoding="utf-8",
+    )
+
 
 def append_audit_event(case_directory: Path, event: str, **details: Any) -> None:
-    audit = {"timestamp": datetime.now(timezone.utc).isoformat(), "event": event, **details}
+    audit = _json_safe({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event": event,
+        **details,
+    })
     with (case_directory / "audit.jsonl").open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(audit, sort_keys=True) + "\n")
+        handle.write(json.dumps(audit, sort_keys=True, allow_nan=False) + "\n")
