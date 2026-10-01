@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pydicom
+import highdicom as hd
 from pydicom.data import get_testdata_file
 
 from backend.dicom_services import (
@@ -58,6 +59,8 @@ def test_dicom_seg_round_trip(tmp_path):
     assert int(seg.SegmentSequence[0].SegmentNumber) == 1
     assert seg.SegmentSequence[0].SegmentLabel == "spleen"
     assert len(seg.ReferencedSeriesSequence) == 1
+    parsed_seg = hd.seg.segread(str(output))
+    assert parsed_seg.number_of_segments == 1
 
 
 def test_dicom_sr_round_trip(tmp_path):
@@ -80,6 +83,8 @@ def test_dicom_sr_round_trip(tmp_path):
     sr = pydicom.dcmread(output)
     assert sr.SOPClassUID == "1.2.840.10008.5.1.4.1.1.88.22"
     assert sr.ContentTemplateSequence[0].TemplateIdentifier == "1500"
+    parsed_sr = hd.sr.srread(str(output))
+    assert parsed_sr.SOPClassUID == sr.SOPClassUID
 
 
 def test_series_metadata_reports_single_series(tmp_path):
