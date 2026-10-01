@@ -1166,22 +1166,9 @@ async def segment(
                         )
                     ),
                 )
-                sr_info = create_structured_report(
-                    source_files=source_files,
-                    measurements=(result_payload.get("structured_measurements") or {}).get(
-                        "measurements", []
-                    ),
-                    target=target,
-                    output_path=case_path / "structured_report.dcm",
-                )
                 result_payload["dicom_seg_result"] = {
                     **(result_payload.get("dicom_seg_result") or {}),
                     **seg_info,
-                    "status": "CREATED",
-                }
-                result_payload["dicom_sr_result"] = {
-                    **(result_payload.get("dicom_sr_result") or {}),
-                    **sr_info,
                     "status": "CREATED",
                 }
                 result_payload.setdefault("warnings", []).append(
@@ -1205,6 +1192,20 @@ async def segment(
             result_payload["dicom_seg_result"] = provenance_record["dicom_seg"]
             result_payload["dicom_sr_result"] = provenance_record["dicom_sr"]
             result_payload["uncertainty_status"] = provenance_record["structured_measurements"]["uncertainty_status"]
+
+            if result_payload.get("source_type") == "DICOM":
+                source_files = collect_dicom_files(case_path / "dicom_source")
+                sr_info = create_structured_report(
+                    source_files=source_files,
+                    measurements=provenance_record["structured_measurements"]["measurements"],
+                    target=target,
+                    output_path=case_path / "structured_report.dcm",
+                )
+                result_payload["dicom_sr_result"] = {
+                    **(result_payload.get("dicom_sr_result") or {}),
+                    **sr_info,
+                    "status": "CREATED",
+                }
 
             write_report_bundle(case_path, result_payload)
             append_audit_event(
