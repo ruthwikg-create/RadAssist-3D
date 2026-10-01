@@ -688,6 +688,11 @@ export default function ThreeDMeshViewer({
   }, [surfaces]);
 
   useEffect(() => {
+    clippingPlaneRef.current.normal.set(
+      clipAxis === "x" ? 1 : 0,
+      clipAxis === "y" ? 1 : 0,
+      clipAxis === "z" ? 1 : 0,
+    );
     clippingPlaneRef.current.constant =
       clipPosition * Math.max(
         1,
