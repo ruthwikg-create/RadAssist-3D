@@ -213,11 +213,11 @@ def anonymize_directory(source: Path, destination: Path, salt: str) -> dict[str,
         if getattr(ds, name, None)
     }
 
-    for source_file in files:
+    for index, source_file in enumerate(files, start=1):
         ds = pydicom.dcmread(str(source_file), force=False)
         original_sop = str(getattr(ds, "SOPInstanceUID", source_file.name))
         anon = anonymize_dataset(ds, salt=salt, retain_uids=False, known_uids=all_uids)
-        out = destination / (source_file.stem + ".dcm")
+        out = destination / f"{index:06d}_{source_file.stem}.dcm"
         anon.save_as(str(out), write_like_original=False)
         output_files.append(str(out))
         mapping[original_sop] = str(getattr(anon, "SOPInstanceUID", ""))
