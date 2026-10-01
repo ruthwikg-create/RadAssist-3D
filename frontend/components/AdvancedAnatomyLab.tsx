@@ -6,9 +6,10 @@ import {
 } from "lucide-react";
 import type { CaseResult, BackendHealth } from "../lib/types";
 
-type TargetKey = "spleen" | "heart" | "prostate";
+type TargetKey = "spleen" | "heart" | "prostate" | "brain_tumor";
 
 const MODELS: Array<{id:TargetKey;name:string;modality:string;input:string;architecture:string;labels:string[];purpose:string}> = [
+  {id:"brain_tumor",name:"Brain Tumor MRI",modality:"MR",input:"T1c + T1 + T2 + FLAIR",architecture:"MONAI SegResNet 3D",labels:["tumor core","whole tumor","enhancing tumor"],purpose:"BraTS tumor subregion segmentation and 3D lesion review"},
   {id:"heart",name:"Cardiac Ventricular MRI",modality:"MR",input:"Cardiac short-axis MRI",architecture:"2D MONAI UNet + SliceInferer",labels:["LV blood pool","myocardium","RV blood pool"],purpose:"Ventricular structure segmentation and 3D reconstruction"},
   {id:"prostate",name:"Prostate MRI Anatomy",modality:"MR",input:"Prostate MRI volume",architecture:"MONAI 3D segmentation",labels:["central gland","peripheral zone"],purpose:"Zonal anatomy segmentation and quantitative morphology"},
   {id:"spleen",name:"Spleen CT",modality:"CT",input:"Abdominal CT volume",architecture:"MONAI SegResNet",labels:["spleen"],purpose:"Organ segmentation, mesh reconstruction and quantitative QA"},
@@ -50,7 +51,7 @@ export default function AdvancedAnatomyLab({result,backend}:{result:CaseResult|n
               const modelLoaded = backend?.models?.[model.id]?.loaded ?? false;
               const selected = model.id === target;
               return <article key={model.id} className={"aal-model " + (selected ? "selected" : "")}>
-                <div className="aal-model-icon">{model.id === "heart" ? <Activity size={20}/> : model.id === "prostate" ? <Dna size={20}/> : <CircleDot size={20}/>}</div>
+                <div className="aal-model-icon">{model.id === "heart" ? <Activity size={20}/> : model.id === "prostate" ? <Dna size={20}/> : model.id === "brain_tumor" ? <Brain size={20}/> : <CircleDot size={20}/>}</div>
                 <div className="aal-model-top"><b>{model.name}</b><span className={modelLoaded ? "good" : "warn"}>{modelLoaded ? "READY" : "CHECK"}</span></div>
                 <div className="aal-model-meta"><span><FileImage size={12}/> {model.modality}</span><span><Layers3 size={12}/> {model.architecture}</span></div>
                 <p>{model.purpose}</p>
