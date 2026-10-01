@@ -47,3 +47,5 @@
 .aal-warning-list{margin:5px 0 0;padding-left:14px;color:var(--cw-amber);font:7px/1.45 'JetBrains Mono',monospace}.aal-warning-list li+li{margin-top:2px}
 
 .aal-planned{border-style:dashed;opacity:.9;background:rgba(69,222,237,.018)}
+
+.aal-lesion-grid article small{color:var(--cw-outline);font:6px 'JetBrains Mono',monospace;line-height:1.35}
