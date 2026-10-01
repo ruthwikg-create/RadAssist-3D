@@ -49,9 +49,9 @@ RadAssist uses the native source geometry for final volume calculations rather t
 
 This improves traceability and measurement QA, but it does not make the software a clinically validated medical device. Clinical deployment requires formal verification/validation, risk management, usability/human-factors work and evidence supporting safety and effectiveness appropriate to the intended use.
 
-## Final verified baseline
+## Verification baseline
 
-This build includes the TypeScript fixes for the measurement-QA schema (`MeasurementQuality`) and the nullable legacy-case access in `ScanWorkspace.tsx`. The verification script can resolve TypeScript from the frontend project or the global compiler.
+The repository includes TypeScript/build CI, backend syntax/runtime checks, and DICOM regression tests. A capability is not labeled fully verified until the corresponding automated run or representative runtime dataset has actually passed. GitHub Actions execution for the current branch is currently not observable through the connected Actions API, so CI is not represented as green here.
 
 
 ## Professional workstation architecture
