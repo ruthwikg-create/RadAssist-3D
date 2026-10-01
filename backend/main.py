@@ -42,6 +42,7 @@ try:
     from .prostate_model_adapter import ProstateMRIAdapter
     from .multimodel_engine import MultiModelInferenceEngine
     from .engineering import append_audit_event, build_provenance, validate_input_contract, write_report_bundle
+    from .analysis_registry import normalize_modality, validate_segmentation_protocol, public_registry
 except ImportError:
     from case_store import (
         case_dir,
@@ -62,6 +63,7 @@ except ImportError:
     from prostate_model_adapter import ProstateMRIAdapter
     from multimodel_engine import MultiModelInferenceEngine
     from engineering import append_audit_event, build_provenance, validate_input_contract, write_report_bundle
+    from analysis_registry import normalize_modality, validate_segmentation_protocol, public_registry
 
 
 logging.basicConfig(
@@ -896,6 +898,7 @@ async def get_case_report(case_id: str) -> FileResponse:
 async def segment(
     request: Request,
     target: str = Form("spleen"),
+    modality: str = Form("AUTO"),
     files: list[UploadFile] = File(
         ...,
         description=(
@@ -913,6 +916,7 @@ async def segment(
         )
 
     target = target.strip().lower()
+    requested_modality = normalize_modality(modality)
 
     if target not in SUPPORTED_TARGETS:
         raise HTTPException(
@@ -922,6 +926,15 @@ async def segment(
                 "Choose spleen, heart, or prostate."
             ),
         )
+
+    # ------------------------------------------------------------
+    # Protocol validation
+    # ------------------------------------------------------------
+
+    try:
+        resolved_modality, _ = validate_segmentation_protocol(target, requested_modality)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     # ------------------------------------------------------------
     # File validation
@@ -1150,6 +1163,7 @@ async def segment(
                 target=target,
                 source_type=result_payload.get("source_type"),
                 modality=result_payload.get("modality"),
+                requested_modality=resolved_modality,
                 input_validation=input_validation,
                 qa_status=(result_payload.get("measurement_quality") or {}).get("status"),
             )
