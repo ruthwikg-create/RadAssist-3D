@@ -92,12 +92,18 @@ SUPPORTED_TARGETS = {
         "display_name": "Brain Tumor",
         "modality": "MR",
         "description": "BraTS multimodal brain tumor subregion segmentation",
+        "kind": "LESION",
+        "input_contract": "T1c + T1 + T2 + FLAIR aligned NIfTI volumes",
+        "supported_source_types": ["NIFTI"],
         "labels": {"0": "background", "1": "tumor core", "2": "whole tumor", "4": "enhancing tumor"},
     },
     "spleen": {
         "display_name": "Spleen",
         "modality": "CT",
         "description": "Spleen CT segmentation",
+        "kind": "ANATOMY",
+        "input_contract": "Single CT volume: DICOM series, DICOM ZIP or NIfTI",
+        "supported_source_types": ["DICOM", "NIFTI"],
         "labels": {
             "0": "background",
             "1": "spleen",
@@ -107,6 +113,9 @@ SUPPORTED_TARGETS = {
         "display_name": "Heart",
         "modality": "MR",
         "description": "Cardiac MRI ventricular segmentation",
+        "kind": "ANATOMY",
+        "input_contract": "Cardiac short-axis MR volume: DICOM series or NIfTI",
+        "supported_source_types": ["DICOM", "NIFTI"],
         "labels": {
             "0": "background",
             "1": "LV blood pool",
@@ -118,6 +127,9 @@ SUPPORTED_TARGETS = {
         "display_name": "Prostate",
         "modality": "MR",
         "description": "Prostate MRI zonal segmentation",
+        "kind": "ANATOMY",
+        "input_contract": "Single prostate MRI volume: DICOM series or NIfTI",
+        "supported_source_types": ["DICOM", "NIFTI"],
         "labels": {
             "0": "background",
             "1": "central gland",
@@ -691,11 +703,7 @@ async def health(
         dict[str, Any],
     ] = {}
 
-    for target in (
-        "spleen",
-        "heart",
-        "prostate",
-    ):
+    for target in SUPPORTED_TARGETS:
         metadata = (
             SUPPORTED_TARGETS[target]
         )
@@ -706,9 +714,12 @@ async def health(
             "display_name": metadata[
                 "display_name"
             ],
-            "modality": metadata[
-                "modality"
-            ],
+            "modality": metadata["modality"],
+            "description": metadata["description"],
+            "kind": metadata.get("kind", "ANATOMY"),
+            "input_contract": metadata.get("input_contract"),
+            "supported_source_types": metadata.get("supported_source_types", []),
+            "labels": metadata.get("labels", {}),
         }
 
     return HealthResponse(
