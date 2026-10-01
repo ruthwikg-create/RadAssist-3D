@@ -116,6 +116,34 @@ A validation Dice value shown by the application is treated as a model benchmark
 - Axes and grid
 - Fullscreen workspace
 
+### Anatomy, model and education workspace
+
+The advanced workstation now includes an **Anatomy & Models** workspace that makes the model contract visible before a result is interpreted:
+
+- image/source type
+- modality
+- expected model input
+- model architecture
+- anatomical label classes
+- model-domain compatibility status
+- physical geometry and spacing
+- source → labelmap → physical geometry → mesh → QA explanation
+- per-structure 3D anatomy and quantitative review
+- education workflow for anatomy, MPR planes, 3D surfaces and quantitative concepts
+- clinician/research review checklist
+
+A dedicated whole-heart multi-structure model target is represented separately from the current ventricular short-axis model. The application does not turn the current ventricular model into a whole-heart model by smoothing or filling gaps.
+
+### Tumor and lesion research layer
+
+RadAssist also contains an explicit pathology-model registry for optional lesion workflows. The registry can expose anatomy-specific model slots for brain MRI tumor segmentation, lung CT nodule detection, liver focal lesions and prostate MRI lesions.
+
+The important design rule is:
+
+> **No tumor finding is produced by placeholder thresholds or by re-labeling anatomical segmentation artifacts.**
+
+An actual lesion result requires a pathology-specific checkpoint, a declared input contract, provenance, uncertainty/review metadata, and an appropriate validation program. This keeps the tumor workflow inspectable instead of presenting an unvalidated detector as a diagnostic feature.
+
 ### Quantitative analysis
 
 RadAssist calculates measurements from the native image/labelmap geometry rather than relying on browser preview dimensions.
