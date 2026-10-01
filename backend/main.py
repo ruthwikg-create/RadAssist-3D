@@ -611,12 +611,16 @@ async def health(
             ],
         }
 
+    expected_targets = set(SUPPORTED_TARGETS)
+    loaded_targets = set(engines)
+    health_status = (
+        "ok"
+        if loaded_targets == expected_targets
+        else "degraded"
+    )
+
     return HealthResponse(
-        status=(
-            "ok"
-            if bool(engines)
-            else "degraded"
-        ),
+        status=health_status,
         service="radassist-3d-backend",
         version="1.4.0",
         device=str(DEVICE),
