@@ -271,9 +271,20 @@ export default function AnalysisInspector({ result }: { result: CaseResult }) {
           <span className="text-[9px] text-slate-600">Total processing time</span>
           <strong className="font-mono text-lg text-slate-100">{fmt(result.processing_seconds)} s</strong>
         </div>
-        <div className="mt-2 text-[8px] leading-4 text-slate-600">
-          Detailed stage timing is not fabricated; the backend currently records total request processing time.
-        </div>
+        {result.stage_timings_seconds && Object.keys(result.stage_timings_seconds).length > 0 ? (
+          <div className="mt-3 grid grid-cols-2 gap-2 text-[8px]">
+            {Object.entries(result.stage_timings_seconds).map(([stage, seconds]) => (
+              <div key={stage} className="rounded-md border border-white/10 bg-white/[0.02] p-2">
+                <span className="text-slate-600">{stage.replaceAll("_", " ")}</span>
+                <strong className="mt-1 block font-mono text-slate-300">{seconds.toFixed(3)} s</strong>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-2 text-[8px] leading-4 text-slate-600">
+            Detailed stage timing is unavailable for older persisted cases.
+          </div>
+        )}
       </section>
     </div>
   );
