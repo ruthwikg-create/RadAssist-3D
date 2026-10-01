@@ -533,6 +533,8 @@ class MultiModelInferenceEngine:
             )
 
         start = perf_counter()
+        stage_timings: dict[str, float] = {}
+        stage_start = perf_counter()
 
         loaded = self._load_input(
             input_paths,
@@ -540,6 +542,8 @@ class MultiModelInferenceEngine:
             target,
         )
 
+        stage_timings["input_load"] = round(perf_counter() - stage_start, 4)
+        stage_start = perf_counter()
         image = loaded.image
 
         original_spacing = [
@@ -563,12 +567,17 @@ class MultiModelInferenceEngine:
                     image
                 )
 
-                # Post-process independently per anatomical label. The raw model
+        stage_timings["inference"] = round(perf_counter() - stage_start, 4)
+        stage_start = perf_counter()
+
+        # Post-process independently per anatomical label. The raw model
         # prediction is preserved only in provenance/QA; quantitative output
         # uses the cleaned labelmap to prevent fragmented islands dominating
         # meshes and measurements.
         raw_mask = mask
         mask, component_cleanup = _largest_component_per_label(mask)
+        stage_timings["postprocess"] = round(perf_counter() - stage_start, 4)
+        stage_start = perf_counter()
 
         label_meshes: dict[str, Any] = {}
         label_mesh_steps: list[int] = []
@@ -827,13 +836,7 @@ class MultiModelInferenceEngine:
                 },
             }
         else:
-            validation_per_class = {
-                "central gland": 0.88,
-                "peripheral zone": 0.75,
-            }
-
-            # These are bundle-level reference metrics,
-            # not patient-specific accuracy.
+            validation_per_class = {}
             validation_dice = None
 
             warnings = [
@@ -843,9 +846,7 @@ class MultiModelInferenceEngine:
                     "diagnostic use."
                 ),
                 (
-                    "Reported Dice values are "
-                    "bundle-level validation metrics, "
-                    "not patient-specific accuracy."
+                    "No patient-specific Dice/IoU is computed during inference; use the offline reference-mask validator."
                 ),
             ]
             raw_provenance = model.provenance()
@@ -901,9 +902,8 @@ class MultiModelInferenceEngine:
                 },
             }
 
-        elapsed = (
-            perf_counter() - start
-        )
+        stage_timings["metrics_and_mesh"] = round(perf_counter() - stage_start, 4)
+        elapsed = perf_counter() - start
 
         case_id = (
             case_directory.name
@@ -993,10 +993,8 @@ class MultiModelInferenceEngine:
                 original_dimensions
             ),
 
-            "processing_seconds": round(
-                elapsed,
-                3,
-            ),
+            "processing_seconds": round(elapsed, 3),
+            "stage_timings_seconds": stage_timings,
 
             "mesh_step_size": (
                 actual_step
