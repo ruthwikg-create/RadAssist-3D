@@ -90,6 +90,9 @@ export type ModelInfo = {
   labels: Record<string, string>;
   loaded: boolean;
   error: string | null;
+  kind?: "ANATOMY" | "LESION" | string;
+  input_contract?: string | null;
+  supported_source_types?: string[];
 };
 
 export type ModelsResponse = {
