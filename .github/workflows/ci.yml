@@ -1,6 +1,7 @@
 name: RadAssist 3D CI
 
 on:
+  workflow_dispatch:
   push:
     branches: ["main", "feature/**"]
   pull_request:
