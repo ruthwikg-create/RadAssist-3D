@@ -296,7 +296,7 @@ def _read_dicom_series(directory: Path) -> VolumeData:
     if not candidates:
         raise ValueError("No DICOM image series was found.")
     if len(candidates) != 1:
-        raise ValueError("The uploaded DICOM set contains multiple series. Upload exactly one CT series.")
+        raise ValueError("The uploaded DICOM set contains multiple series. Upload exactly one DICOM series.")
 
     _, files = next(iter(candidates.values()))
     _validate_dicom_series_integrity(files)
