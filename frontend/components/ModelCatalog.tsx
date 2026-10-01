@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Activity, Brain, CheckCircle2, CircleDot, HeartPulse, ScanLine, ShieldAlert } from "lucide-react";
 import type { ModelInfo } from "../lib/types";
 
@@ -73,6 +74,7 @@ export default function ModelCatalog({
   onSelect: (target: Target) => void;
 }) {
   const available = Object.values(models).filter((model) => model.loaded).length;
+  const [filter, setFilter] = useState<"ALL" | "CT" | "MR" | "LESION">("ALL");
   const filters = [
     { key: "ALL", label: "ALL" },
     { key: "CT", label: "CT" },
@@ -97,14 +99,8 @@ export default function ModelCatalog({
           <button
             key={filter.key}
             type="button"
-            className="cw-catalog-filter"
-            onClick={(event) => {
-              const root = event.currentTarget.closest(".cw-model-catalog");
-              root?.querySelectorAll(".cw-model-card").forEach((card) => {
-                const element = card as HTMLElement;
-                element.hidden = filter.key !== "ALL" && element.dataset.filter !== filter.key && !(filter.key === "MR" && element.dataset.filter === "MR");
-              });
-            }}
+            className={`cw-catalog-filter ${filter === filter.key ? "active" : ""}`}
+            onClick={() => setFilter(filter.key)}
           >
             {filter.label}
           </button>
@@ -120,7 +116,8 @@ export default function ModelCatalog({
               key={item.target}
               type="button"
               data-filter={item.kind === "LESION" ? "LESION" : item.modality === "CT" ? "CT" : "MR"}
-              className={`cw-model-card ${selectedTarget === item.target ? "active" : ""} `}
+              className={`cw-model-card ${selectedTarget === item.target ? "active" : ""}`}
+              hidden={filter !== "ALL" && (item.kind === "LESION" ? "LESION" : item.modality === "CT" ? "CT" : "MR") !== filter}
               onClick={() => onSelect(item.target)}
               disabled={working}
             >
