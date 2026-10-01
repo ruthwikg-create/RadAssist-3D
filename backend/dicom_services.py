@@ -329,7 +329,8 @@ def create_structured_report(
     if not source_files:
         raise ValueError("DICOM SR requires source DICOM instances.")
 
-    source = pydicom.dcmread(str(source_files[0]), force=False)
+    source_datasets = [pydicom.dcmread(str(path), force=False) for path in source_files]
+    source = source_datasets[0]
 
     observer = hd.sr.ObserverContext(
         observer_type=codes.DCM.Device,
@@ -342,7 +343,7 @@ def create_structured_report(
     )
     context = hd.sr.ObservationContext(observer_device_context=observer)
 
-    source_ref = hd.sr.SourceImageForMeasurementGroup.from_source_image(source)
+    source_refs = [hd.sr.SourceImageForMeasurementGroup.from_source_image(ds) for ds in source_datasets]
     group_measurements = []
     for item in measurements:
         value = item.get("value")
@@ -375,7 +376,7 @@ def create_structured_report(
         raise ValueError("No finite measurements available for DICOM SR.")
 
     group = hd.sr.MeasurementsAndQualitativeEvaluations(
-        source_images=[source_ref],
+        source_images=source_refs,
         tracking_identifier=hd.sr.TrackingIdentifier(
             uid=hd.UID(),
             identifier=f"RadAssist-{target}-measurements",
@@ -395,7 +396,7 @@ def create_structured_report(
         title=codes.DCM.ImagingMeasurementReport,
     )
     sr = hd.sr.Comprehensive3DSR(
-        evidence=[source],
+        evidence=source_datasets,
         content=report,
         series_number=901,
         series_instance_uid=hd.UID(),
