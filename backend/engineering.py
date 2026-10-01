@@ -53,7 +53,7 @@ def validate_input_contract(*, source_type: str, modality: str, dimensions: list
         errors.append("INPUT_DIMENSIONS_INVALID")
     if len(spacing_mm) != 3 or any(float(v) <= 0 for v in spacing_mm):
         errors.append("INPUT_SPACING_INVALID")
-    if source_type not in {"DICOM", "NIFTI"}:
+    if source_type not in {"DICOM", "NIFTI", "SYNTHETIC"}:
         errors.append("INPUT_SOURCE_TYPE_UNSUPPORTED")
     if modality not in {"CT", "MR", "UNKNOWN"}:
         errors.append("INPUT_MODALITY_UNSUPPORTED")
@@ -105,6 +105,7 @@ def build_dicom_seg_result(result: dict[str, Any]) -> dict[str, Any]:
 
 def build_dicom_sr_result(result: dict[str, Any]) -> dict[str, Any]:
     quality = result.get("measurement_quality") or {}
+    structured = build_structured_measurements(result=result)
     return {
         "compatibility": DICOM_SR_COMPATIBILITY,
         "schema_version": SCHEMA_VERSION,
@@ -113,7 +114,7 @@ def build_dicom_sr_result(result: dict[str, Any]) -> dict[str, Any]:
             {
                 "tracking_identifier": f"RadAssist:{result.get('request_id')}",
                 "finding": result.get("target"),
-                "measurements": build_structured_measurements(result)["measurements"],
+                "measurements": structured["measurements"],
                 "qa": {
                     "status": quality.get("status"),
                     "flags": quality.get("flags", []),
@@ -125,6 +126,7 @@ def build_dicom_sr_result(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_provenance(result: dict[str, Any]) -> dict[str, Any]:
+    structured = build_structured_measurements(result=result)
     return {
         "schema_version": SCHEMA_VERSION,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -137,7 +139,7 @@ def build_provenance(result: dict[str, Any]) -> dict[str, Any]:
         },
         "model": result.get("model_provenance", {}),
         "measurement": result.get("measurement_quality", {}),
-        "structured_measurements": build_structured_measurements(result),
+        "structured_measurements": structured,
         "dicom_seg": build_dicom_seg_result(result),
         "dicom_sr": build_dicom_sr_result(result),
     }
