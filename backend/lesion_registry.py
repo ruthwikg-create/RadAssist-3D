@@ -12,6 +12,8 @@ LESION_MODEL_REGISTRY = (
         "anatomy": "brain",
         "output": ["candidate lesion mask", "volume", "longest diameter", "3D surface"],
         "environment_variable": "RADASSIST_LESION_BRAIN_MODEL_PATH",
+        "reference_model": "MONAI BraTS MRI segmentation",
+        "input_contract": "4-channel T1c/T1/T2/FLAIR MRI at 1 mm isotropic resolution",
     },
     {
         "id": "lung_ct_lesion",
@@ -20,6 +22,8 @@ LESION_MODEL_REGISTRY = (
         "anatomy": "chest",
         "output": ["candidate lesion mask", "volume", "longest diameter", "3D surface"],
         "environment_variable": "RADASSIST_LESION_LUNG_MODEL_PATH",
+        "reference_model": "MONAI lung_nodule_ct_detection",
+        "input_contract": "Chest CT volume matching the selected MONAI bundle contract",
     },
     {
         "id": "liver_ct_mri_lesion",
