@@ -288,7 +288,7 @@ export default function ClinicalResearchConsole({
               </Card>
               <Card>
                 <CardTitle icon={<Microscope size={16} />} title="AI & Processing" meta="RUNTIME" />
-                <div className="cw-dashboard-value">{loaded}/{Object.keys(result ? (backend?.models ?? {}) : (backend?.models ?? {})).length || 4} models ready</div>
+                <div className="cw-dashboard-value">{loaded}/{Object.keys(backend?.models ?? {}).length || 4} models ready</div>
                 <div className="cw-dashboard-meta">{result ? `Device: ${device.toUpperCase()} · Processing: ${result.processing_seconds.toFixed(2)} s` : `Device: ${device.toUpperCase()} · Awaiting study`}</div>
                 <div className="cw-dashboard-actions">
                   <button type="button" onClick={() => goToSection("metrics")}>Quantification</button>
