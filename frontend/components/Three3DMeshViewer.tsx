@@ -49,6 +49,9 @@ const COLORS: Record<string, number> = {
   heart3: 0x5ca9ff,
   prostate1: 0xff8a65ff,
   prostate2: 0x4dd9c0,
+  brain_tumor1: 0xffc857,
+  brain_tumor2: 0x45deed,
+  brain_tumor4: 0xff5c7a,
 };
 
 function usable(mesh?: MeshData): boolean {
@@ -72,6 +75,13 @@ function colorFor(target: string | undefined, label: number) {
   if (target === "prostate") {
     return (
       COLORS[`prostate${label}`] ??
+      COLORS.spleen
+    );
+  }
+
+  if (target === "brain_tumor") {
+    return (
+      COLORS[`brain_tumor${label}`] ??
       COLORS.spleen
     );
   }
