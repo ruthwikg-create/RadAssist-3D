@@ -1183,6 +1183,7 @@ async def segment(
                     **seg_info,
                     "status": "CREATED",
                 }
+                result_payload["dicom_seg_result"] = generated_dicom_seg
                 result_payload.setdefault("warnings", []).append(
                     "DICOM outputs use a de-identified source copy; pixel-level burned-in identifiers are not automatically removed."
                 )
@@ -1219,6 +1220,13 @@ async def segment(
                     "status": "CREATED",
                 }
                 result_payload["dicom_sr_result"] = generated_dicom_sr
+
+            # Rebuild provenance after all DICOM artifacts exist so report.json
+            # records the actual generated SEG/SR files rather than placeholders.
+            provenance_record = build_provenance(result_payload)
+            result_payload["provenance_record"] = provenance_record
+            result_payload["structured_measurements"] = provenance_record["structured_measurements"]
+            result_payload["uncertainty_status"] = provenance_record["structured_measurements"]["uncertainty_status"]
 
             write_report_bundle(case_path, result_payload)
             append_audit_event(
