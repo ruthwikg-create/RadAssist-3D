@@ -233,11 +233,29 @@ class MultiModelInferenceEngine:
         ]
         if len(nii) != 4:
             raise ValueError(
-                "Brain tumor research inference requires four NIfTI files in this order: "
-                "T1c, T1, T2, FLAIR."
+                "Brain tumor research inference requires four NIfTI files: T1c, T1, T2 and FLAIR."
             )
 
-        channels = [sitk.ReadImage(str(path)) for path in nii]
+        def channel_rank(path: Path) -> int:
+            name = path.name.lower()
+            if "flair" in name:
+                return 3
+            if "t1c" in name or "t1ce" in name or "t1_gd" in name:
+                return 0
+            if "t2" in name:
+                return 2
+            if "t1" in name:
+                return 1
+            return 99
+
+        ranked = sorted(nii, key=channel_rank)
+        if [channel_rank(path) for path in ranked] != [0, 1, 2, 3]:
+            raise ValueError(
+                "Could not identify all four BraTS channels from filenames. "
+                "Use filenames containing T1c, T1, T2 and FLAIR."
+            )
+
+        channels = [sitk.ReadImage(str(path)) for path in ranked]
         reference = channels[0]
         for index, image in enumerate(channels[1:], start=1):
             if image.GetDimension() != 3 or reference.GetDimension() != 3:
