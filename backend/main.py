@@ -763,14 +763,14 @@ async def models(
 # Case history
 # ---------------------------------------------------------------------------
 
-@app.get(
-   @app.get("/api/v1/lesion-capabilities")
+@app.get("/api/v1/lesion-capabilities")
 async def lesion_capabilities() -> dict[str, Any]:
     """Expose optional pathology-model slots without claiming a lesion finding."""
     return {"models": get_lesion_capabilities()}
 
 
- "/api/v1/cases",
+@app.get(
+    "/api/v1/cases",
     response_model=list[CaseSummary],
 )
 async def cases() -> list[CaseSummary]:
