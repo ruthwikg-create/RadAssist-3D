@@ -48,14 +48,18 @@ class DicomWebClient:
     def stow(self, dicom_bytes: bytes) -> str:
         if not self.configured:
             raise RuntimeError("DICOMweb is not configured. Set RADASSIST_DICOMWEB_URL.")
+        boundary = "RADASSIST_DICOMWEB_BOUNDARY"
+        body = (
+            ("--" + boundary + "\r\n").encode("ascii")
+            + b"Content-Type: application/dicom\r\n\r\n"
+            + dicom_bytes
+            + ("\r\n--" + boundary + "--\r\n").encode("ascii")
+        )
         headers = self._headers("application/dicom+json")
-        headers.update({
-            "Content-Type": "application/dicom",
-            "Accept": "application/dicom+json",
-        })
+        headers["Content-Type"] = 'multipart/related; type="application/dicom"; boundary=' + boundary
         response = requests.post(
             f"{self.base_url}/studies",
-            data=dicom_bytes,
+            data=body,
             headers=headers,
             timeout=self.timeout,
         )
