@@ -30,6 +30,7 @@ export default function AdvancedAnatomyLab({result,backend}:{result:CaseResult|n
   const active = MODELS.find((item) => item.id === target) ?? MODELS[0];
   const loaded = backend?.models?.[target]?.loaded ?? false;
   const labels = result?.label_metrics?.filter((item) => item.name.toLowerCase() !== "background") ?? [];
+  const compatibility = result?.model_compatibility;
 
   return (
     <div className="aal">
@@ -70,8 +71,9 @@ export default function AdvancedAnatomyLab({result,backend}:{result:CaseResult|n
             <div><span>AI model</span><b>{result?.model_provenance?.name ?? "—"}</b></div>
             <div><span>Architecture</span><b>{result?.model_provenance?.architecture ?? "—"}</b></div>
             <div><span>QA gate</span><b className={result?.measurement_quality?.status === "PASS" ? "good" : "warn"}>{result?.measurement_quality?.status ?? "REVIEW"}</b></div>
+            <div><span>Model domain</span><b className="warn">{compatibility?.status ?? "NOT_CHECKED"}</b></div>
           </div>
-          <div className="aal-callout"><ShieldAlert size={16}/><div><b>Compatibility is part of the result</b><p>RadAssist does not silently convert an incompatible model into a plausible-looking anatomy. Cardiac ventricular models require appropriate cardiac MR input; a fragmented mask is surfaced as a QA issue instead of being cosmetically repaired.</p></div></div>
+          <div className="aal-callout"><ShieldAlert size={16}/><div><b>Compatibility is part of the result</b><p>RadAssist does not silently convert an incompatible model into a plausible-looking anatomy. Cardiac ventricular models require appropriate cardiac MR input; a fragmented mask is surfaced as a QA issue instead of being cosmetically repaired.</p>{compatibility?.warnings?.length ? <ul className="aal-warning-list">{compatibility.warnings.slice(0,3).map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}</div></div>
         </SectionCard>
 
         <SectionCard title="How the 3D Anatomy Is Built" eyebrow="03 / SOURCE → 3D">
