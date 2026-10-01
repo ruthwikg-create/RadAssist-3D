@@ -260,8 +260,8 @@ def create_segmentation(
             "Refusing to create a spatially ambiguous DICOM SEG."
         )
 
-    labels = [label for label in sorted(label_names) if label != 0 and np.any(mask_array_zyx == label)]
-    if not labels:
+    labels = [label for label in sorted(label_names) if label != 0]
+    if not labels or not np.any(mask_array_zyx > 0):
         raise ValueError("Cannot create DICOM SEG from an empty segmentation.")
 
     algorithm = hd.AlgorithmIdentificationSequence(
@@ -271,17 +271,17 @@ def create_segmentation(
     )
 
     descriptions = []
-    for number in labels:
+    for segment_number, label_value in enumerate(labels, start=1):
         descriptions.append(
             hd.seg.SegmentDescription(
-                segment_number=int(number),
-                segment_label=label_names[number],
+                segment_number=int(segment_number),
+                segment_label=label_names[label_value],
                 segmented_property_category=codes.SCT.AnatomicalStructure,
                 segmented_property_type=_segment_code(label_names[number]),
                 algorithm_type=hd.seg.SegmentAlgorithmTypeValues.AUTOMATIC,
                 algorithm_identification=algorithm,
                 tracking_uid=hd.UID(),
-                tracking_id=f"RadAssist-{label_names[number]}",
+                tracking_id=f"RadAssist-{label_names[label_value]}",
             )
         )
 
