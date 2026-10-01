@@ -28,6 +28,7 @@ import Three3DMeshViewer from "./Three3DMeshViewer";
 import MetricsPanel from "./MetricsPanel";
 import ViewerErrorBoundary from "./ViewerErrorBoundary";
 import AnalysisInspector from "./AnalysisInspector";
+import DicomMetadataPanel from "./DicomMetadataPanel";
 
 import type {
   BackendHealth,
@@ -42,6 +43,8 @@ import {
   caseBundleUrl,
   caseReportUrl,
   caseMaskUrl,
+  caseDicomSegUrl,
+  caseDicomSrUrl,
   createDemoCase,
   deleteCase,
   downloadApiFile,
@@ -1589,6 +1592,28 @@ export default function ScanWorkspace() {
                   />
 
                   <AnalysisInspector result={result} />
+                  <DicomMetadataPanel caseId={result.request_id} enabled={result.source_type === "DICOM"} />
+                  {result.source_type === "DICOM" && result.persisted !== false ? (
+                    <div className="ra-inspector-card p-3">
+                      <div className="ra-section-label">DICOM outputs</div>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          className="rounded-md border border-white/10 px-2 py-2 text-[9px] text-slate-300"
+                          onClick={() => void downloadArtifact(caseDicomSegUrl(result.request_id), "radassist_segmentation.dcm", setError)}
+                        >
+                          Download SEG
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-md border border-white/10 px-2 py-2 text-[9px] text-slate-300"
+                          onClick={() => void downloadArtifact(caseDicomSrUrl(result.request_id), "radassist_structured_report.dcm", setError)}
+                        >
+                          Download SR
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="ra-inspector-card ra-enter ra-enter-3 p-3">
                     <div className="flex items-center justify-between gap-3">
