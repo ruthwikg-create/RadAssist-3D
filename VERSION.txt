@@ -1,5 +1,5 @@
-RadAssist 3D — FINAL VERIFIED LOCAL BASELINE
-Package: 2026-09-29
-Frontend: Next.js 16.3.6 / React 19.3.0
+RadAssist 3D — Research Workstation Audit Build
+Package: 2026-10-01
+Frontend: Next.js 16.3.6 / React 19.2.0
 Build: next build --webpack
-Status: source/static verification passed
+Status: automated source audit and checkpoint-provenance hardening in progress

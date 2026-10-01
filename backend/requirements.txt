@@ -14,3 +14,7 @@ pydantic==2.13.5
 # PyPI publishes wheels for Python 3.10+.
 torch==2.14.0
 monai==1.6.0
+
+# DICOM interoperability
+pydicom==3.0.2
+highdicom==0.28.1

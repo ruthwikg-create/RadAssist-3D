@@ -22,6 +22,10 @@ This verification covers the ChatGPT-generated RadAssist 3D source tree in this 
 - UI design-system checks: PASS.
 - No TODO/FIXME/placeholder markers in the application source tree: PASS.
 
+## Current CI verification
+
+GitHub Actions is configured to run backend dependency installation, Python compilation, backend regression tests, frontend TypeScript checks, and a production frontend build on pushes and pull requests. The latest audit-branch workflow is currently queued/running; its final conclusion must be checked before treating the branch as fully green.
+
 ## Runtime verification boundary
 A complete browser `next build` and a live Cornerstone NIfTI rendering session were not executed inside this packaging environment because the environment did not contain the user's Windows `node_modules` or SimpleITK runtime. The package therefore makes no false claim of having performed those machine-specific runtime tests.
 

@@ -5,6 +5,7 @@ import os
 import tempfile
 import uuid
 import zipfile
+import hmac
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,8 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, ORJSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
@@ -28,6 +31,7 @@ try:
         create_case,
         delete_case,
         list_case_summaries,
+        purge_expired_cases,
         load_case_result,
         save_case_result,
     )
@@ -38,16 +42,20 @@ try:
         RadAssistInferenceEngine,
         create_demo_case,
     )
+    from .brain_tumor_model_adapter import BrainTumorBraTSAdapter
     from .heart_model_adapter import CardiacVentricularAdapter
     from .prostate_model_adapter import ProstateMRIAdapter
     from .multimodel_engine import MultiModelInferenceEngine
-    from .engineering import append_audit_event, build_provenance, validate_input_contract, write_report_bundle
+    from .engineering import append_audit_event, build_input_manifest, build_provenance, validate_input_contract, write_report_bundle
+    from .dicom_export import export_dicom_seg_and_sr
+    from .lesion_registry import get_lesion_capabilities
 except ImportError:
     from case_store import (
         case_dir,
         create_case,
         delete_case,
         list_case_summaries,
+        purge_expired_cases,
         load_case_result,
         save_case_result,
     )
@@ -58,10 +66,13 @@ except ImportError:
         RadAssistInferenceEngine,
         create_demo_case,
     )
+    from brain_tumor_model_adapter import BrainTumorBraTSAdapter
     from heart_model_adapter import CardiacVentricularAdapter
     from prostate_model_adapter import ProstateMRIAdapter
     from multimodel_engine import MultiModelInferenceEngine
-    from engineering import append_audit_event, build_provenance, validate_input_contract, write_report_bundle
+    from engineering import append_audit_event, build_input_manifest, build_provenance, validate_input_contract, write_report_bundle
+    from dicom_export import export_dicom_seg_and_sr
+    from lesion_registry import get_lesion_capabilities
 
 
 logging.basicConfig(
@@ -77,10 +88,22 @@ logger = logging.getLogger("radassist.api")
 # ---------------------------------------------------------------------------
 
 SUPPORTED_TARGETS = {
+    "brain_tumor": {
+        "display_name": "Brain Tumor",
+        "modality": "MR",
+        "description": "BraTS multimodal brain tumor subregion segmentation",
+        "kind": "LESION",
+        "input_contract": "T1c + T1 + T2 + FLAIR aligned NIfTI volumes",
+        "supported_source_types": ["NIFTI"],
+        "labels": {"0": "background", "1": "tumor core", "2": "whole tumor", "4": "enhancing tumor"},
+    },
     "spleen": {
         "display_name": "Spleen",
         "modality": "CT",
         "description": "Spleen CT segmentation",
+        "kind": "ANATOMY",
+        "input_contract": "Single CT volume: DICOM series, DICOM ZIP or NIfTI",
+        "supported_source_types": ["DICOM", "NIFTI"],
         "labels": {
             "0": "background",
             "1": "spleen",
@@ -90,6 +113,9 @@ SUPPORTED_TARGETS = {
         "display_name": "Heart",
         "modality": "MR",
         "description": "Cardiac MRI ventricular segmentation",
+        "kind": "ANATOMY",
+        "input_contract": "Cardiac short-axis MR volume: DICOM series or NIfTI",
+        "supported_source_types": ["DICOM", "NIFTI"],
         "labels": {
             "0": "background",
             "1": "LV blood pool",
@@ -101,6 +127,9 @@ SUPPORTED_TARGETS = {
         "display_name": "Prostate",
         "modality": "MR",
         "description": "Prostate MRI zonal segmentation",
+        "kind": "ANATOMY",
+        "input_contract": "Single prostate MRI volume: DICOM series or NIfTI",
+        "supported_source_types": ["DICOM", "NIFTI"],
         "labels": {
             "0": "background",
             "1": "central gland",
@@ -116,6 +145,11 @@ SUPPORTED_TARGETS = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    retention_hours = float(os.getenv("RADASSIST_CASE_RETENTION_HOURS", "0"))
+    if retention_hours > 0:
+        removed = purge_expired_cases(retention_hours)
+        logger.info("Removed %d expired case artifacts.", removed)
+
     logger.info(
         "Starting RadAssist 3D backend on %s",
         DEVICE,
@@ -159,6 +193,7 @@ async def lifespan(app: FastAPI):
     # -------------------------
     heart_model = None
     prostate_model = None
+    brain_tumor_model = None
 
     try:
         heart_model = (
@@ -196,39 +231,42 @@ async def lifespan(app: FastAPI):
             "Prostate model initialization failed."
         )
 
-    # Create MRI dispatcher only when both adapters are available.
-    if (
-        heart_model is not None
-        and prostate_model is not None
-    ):
+    try:
+        brain_tumor_model = BrainTumorBraTSAdapter()
+        errors["brain_tumor"] = None
+        logger.info("Brain tumor model loaded successfully.")
+    except Exception as exc:
+        errors["brain_tumor"] = str(exc)
+        logger.warning("Brain tumor checkpoint unavailable: %s", exc)
+
+    # Create the MRI dispatcher from all available research adapters.
+    available_mri_models = {
+        "heart": heart_model,
+        "prostate": prostate_model,
+        "brain_tumor": brain_tumor_model,
+    }
+    available_mri_models = {
+        key: value
+        for key, value in available_mri_models.items()
+        if value is not None
+    }
+
+    if available_mri_models:
         try:
-            app.state.mri_engine = (
-                MultiModelInferenceEngine(
-                    heart_model,
-                    prostate_model,
-                )
+            app.state.mri_engine = MultiModelInferenceEngine(
+                heart_model=heart_model,
+                prostate_model=prostate_model,
+                brain_tumor_model=brain_tumor_model,
             )
-
-            engines["heart"] = heart_model
-            engines["prostate"] = prostate_model
-
+            engines.update(available_mri_models)
             logger.info(
-                "Heart + Prostate multimodel engine ready."
+                "MRI multimodel engine ready: %s",
+                ", ".join(sorted(available_mri_models)),
             )
-
         except Exception as exc:
             app.state.mri_engine = None
-
-            errors["heart"] = (
-                errors.get("heart")
-                or str(exc)
-            )
-
-            errors["prostate"] = (
-                errors.get("prostate")
-                or str(exc)
-            )
-
+            for name in available_mri_models:
+                errors[name] = errors.get(name) or str(exc)
             logger.exception(
                 "MRI multimodel dispatcher initialization failed."
             )
@@ -278,6 +316,8 @@ async def lifespan(app: FastAPI):
 # FastAPI app
 # ---------------------------------------------------------------------------
 
+_enable_docs = os.getenv("RADASSIST_ENABLE_DOCS", "false").lower() == "true"
+
 app = FastAPI(
     title="RadAssist 3D API",
     version="1.4.0",
@@ -287,7 +327,72 @@ app = FastAPI(
     ),
     default_response_class=ORJSONResponse,
     lifespan=lifespan,
+    docs_url="/docs" if _enable_docs else None,
+    redoc_url="/redoc" if _enable_docs else None,
+    openapi_url="/openapi.json" if _enable_docs else None,
 )
+
+API_TOKEN = os.getenv("RADASSIST_API_TOKEN", "").strip()
+REQUIRE_API_AUTH = os.getenv("RADASSIST_REQUIRE_AUTH", "false").lower() == "true"
+
+if REQUIRE_API_AUTH and not API_TOKEN:
+    raise RuntimeError(
+        "RADASSIST_REQUIRE_AUTH=true requires RADASSIST_API_TOKEN."
+    )
+
+trusted_hosts = [
+    host.strip()
+    for host in os.getenv(
+        "RADASSIST_TRUSTED_HOSTS",
+        "localhost,127.0.0.1",
+    ).split(",")
+    if host.strip()
+]
+
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=trusted_hosts,
+)
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "camera=(), microphone=(), geolocation=(), payment=()",
+        )
+        if request.url.path.startswith("/api/v1/"):
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Pragma"] = "no-cache"
+        if os.getenv("RADASSIST_FORCE_HTTPS", "false").lower() == "true":
+            response.headers.setdefault(
+                "Strict-Transport-Security",
+                "max-age=31536000; includeSubDomains",
+            )
+        return response
+
+class ApiAuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if REQUIRE_API_AUTH and request.url.path.startswith("/api/v1/"):
+            authorization = request.headers.get("authorization", "")
+            scheme, _, supplied = authorization.partition(" ")
+            if (
+                scheme.lower() != "bearer"
+                or not supplied
+                or not hmac.compare_digest(supplied, API_TOKEN)
+            ):
+                return ORJSONResponse(
+                    {"detail": "Authentication required."},
+                    status_code=401,
+                    headers={"Cache-Control": "no-store"},
+                )
+        return await call_next(request)
+
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(ApiAuthMiddleware)
 
 
 cors_origins = [
@@ -324,6 +429,7 @@ class HealthResponse(BaseModel):
     device: str
     model_loaded: bool
     model_error: str | None = None
+    demo_enabled: bool = False
 
     models: dict[
         str,
@@ -429,7 +535,12 @@ class SegmentResponse(BaseModel):
 
     measurement_quality: MeasurementQuality | None = None
 
+    advanced_metrics: dict[str, Any] = Field(default_factory=dict)
+    input_notes: list[str] = Field(default_factory=list)
+
     model_provenance: ModelProvenance
+
+    model_compatibility: dict[str, Any] | None = None
 
     label_metrics: list[LabelMetric] = Field(
         default_factory=list
@@ -440,6 +551,10 @@ class SegmentResponse(BaseModel):
     )
 
     label_component_qa: dict[str, dict] = Field(
+        default_factory=dict
+    )
+
+    mesh_diagnostics: dict[str, str] = Field(
         default_factory=dict
     )
 
@@ -462,6 +577,8 @@ class SegmentResponse(BaseModel):
     dicom_sr_result: dict[str, Any] | None = None
     uncertainty_status: dict[str, Any] | None = None
     input_validation: dict[str, Any] | None = None
+    input_manifest: list[dict[str, Any]] | None = None
+    dicom_export: dict[str, Any] | None = None
 
 
 class CaseSummary(BaseModel):
@@ -557,7 +674,7 @@ async def root() -> dict[str, str]:
         "service": "RadAssist 3D API",
         "version": "1.4.0",
         "status": "ok",
-        "docs": "/docs",
+        "docs": "/docs" if _enable_docs else "disabled",
         "health": "/health",
     }
 
@@ -586,11 +703,7 @@ async def health(
         dict[str, Any],
     ] = {}
 
-    for target in (
-        "spleen",
-        "heart",
-        "prostate",
-    ):
+    for target in SUPPORTED_TARGETS:
         metadata = (
             SUPPORTED_TARGETS[target]
         )
@@ -601,9 +714,12 @@ async def health(
             "display_name": metadata[
                 "display_name"
             ],
-            "modality": metadata[
-                "modality"
-            ],
+            "modality": metadata["modality"],
+            "description": metadata["description"],
+            "kind": metadata.get("kind", "ANATOMY"),
+            "input_contract": metadata.get("input_contract"),
+            "supported_source_types": metadata.get("supported_source_types", []),
+            "labels": metadata.get("labels", {}),
         }
 
     return HealthResponse(
@@ -621,6 +737,10 @@ async def health(
             "model_error",
             None,
         ),
+        demo_enabled=os.getenv(
+            "RADASSIST_ALLOW_DEMO",
+            "false",
+        ).lower() == "true",
         models=models,
     )
 
@@ -665,6 +785,12 @@ async def models(
 # ---------------------------------------------------------------------------
 # Case history
 # ---------------------------------------------------------------------------
+
+@app.get("/api/v1/lesion-capabilities")
+async def lesion_capabilities() -> dict[str, Any]:
+    """Expose optional pathology-model slots without claiming a lesion finding."""
+    return {"models": get_lesion_capabilities()}
+
 
 @app.get(
     "/api/v1/cases",
@@ -874,6 +1000,28 @@ async def get_case_bundle(
     )
 
 
+@app.get("/api/v1/cases/{case_id}/dicom-seg")
+async def get_case_dicom_seg(case_id: str) -> FileResponse:
+    try:
+        path = _absolute_case_file(case_id, "radassist_segmentation.dcm")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="DICOM SEG is not available for this case.")
+    return FileResponse(path, media_type="application/dicom", filename="radassist_segmentation.dcm")
+
+
+@app.get("/api/v1/cases/{case_id}/dicom-sr")
+async def get_case_dicom_sr(case_id: str) -> FileResponse:
+    try:
+        path = _absolute_case_file(case_id, "radassist_measurements_sr.dcm")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="DICOM SR is not available for this case.")
+    return FileResponse(path, media_type="application/dicom", filename="radassist_measurements_sr.dcm")
+
+
 @app.get("/api/v1/cases/{case_id}/report")
 async def get_case_report(case_id: str) -> FileResponse:
     try:
@@ -919,7 +1067,7 @@ async def segment(
             status_code=400,
             detail=(
                 "Unsupported model target. "
-                "Choose spleen, heart, or prostate."
+                "Choose spleen, heart, prostate, or brain_tumor."
             ),
         )
 
@@ -969,13 +1117,15 @@ async def segment(
 
     if len(files) > 1 and (
         has_nifti or has_zip
-    ):
+    ) and target != "brain_tumor":
         raise HTTPException(
             status_code=400,
             detail=(
                 "Upload exactly one NIfTI volume "
                 "or one DICOM ZIP. Multiple files "
-                "are reserved for a DICOM series."
+                "are reserved for a DICOM series, "
+                "except brain_tumor which requires four "
+                "aligned NIfTI channels: T1c, T1, T2, FLAIR."
             ),
         )
 
@@ -1010,6 +1160,14 @@ async def segment(
                 detail=(
                     "The Spleen model is unavailable."
                 ),
+            )
+
+    elif target == "brain_tumor":
+        engine = getattr(request.app.state, "mri_engine", None)
+        if engine is None or target not in engines:
+            raise HTTPException(
+                status_code=503,
+                detail="The Brain Tumor model is unavailable.",
             )
 
     else:
@@ -1135,12 +1293,32 @@ async def segment(
 
             # Build deterministic structured result metadata before persistence.
             result_payload["input_validation"] = input_validation
+            result_payload["input_manifest"] = build_input_manifest(input_paths)
             provenance_record = build_provenance(result_payload)
             result_payload["provenance_record"] = provenance_record
             result_payload["structured_measurements"] = provenance_record["structured_measurements"]
             result_payload["dicom_seg_result"] = provenance_record["dicom_seg"]
             result_payload["dicom_sr_result"] = provenance_record["dicom_sr"]
             result_payload["uncertainty_status"] = provenance_record["structured_measurements"]["uncertainty_status"]
+
+            # Generate actual DICOM SEG/SR only when authoritative DICOM source
+            # images are present. NIfTI-only studies retain architecture metadata.
+            try:
+                result_payload["dicom_export"] = await run_in_threadpool(
+                    export_dicom_seg_and_sr,
+                    input_paths=input_paths,
+                    extraction_root=extraction_root,
+                    mask_path=case_path / "segmentation_mask.nii.gz",
+                    output_directory=case_path,
+                    target=target,
+                    result=result_payload,
+                )
+            except Exception as export_error:
+                logger.exception("DICOM export failed for %s", case_id)
+                result_payload["dicom_export"] = {
+                    "status": "FAILED",
+                    "reason": str(export_error),
+                }
 
             write_report_bundle(case_path, result_payload)
             append_audit_event(
@@ -1223,7 +1401,7 @@ async def demo(
     if (
         os.getenv(
             "RADASSIST_ALLOW_DEMO",
-            "true",
+            "false",
         ).lower()
         != "true"
     ):

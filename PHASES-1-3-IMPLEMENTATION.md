@@ -28,10 +28,29 @@ This branch implements the requested workstation upgrade while preserving the re
 - Structured measurement schema.
 - Explicit uncertainty and patient-specific accuracy status.
 - Reproducible model/checkpoint provenance retained in the result.
-- DICOM SEG-compatible and DICOM SR-compatible result architecture records. These are architecture records, not emitted DICOM SEG/SR files yet.
+- DICOM SEG and DICOM SR export for authoritative DICOM source studies via highdicom/pydicom. NIfTI-only cases remain intentionally non-DICOM unless a trustworthy source frame of reference is available.
 - Per-case JSONL audit trail.
 - Exportable structured JSON report.
 - Regression tests for connected-component cleanup and mesh geometry/smoothing.
 
 ## Validation boundary
 These changes improve engineering correctness and traceability but do not establish clinical accuracy, regulatory clearance, or patient-specific diagnostic performance.
+
+
+## Post-Phase-3 security hardening
+
+The audit branch additionally introduces:
+
+- optional bearer-token API authentication
+- trusted-host validation
+- protected artifact retrieval without tokens embedded in imaging URLs
+- no-store controls for API responses
+- browser security headers
+- disabled API documentation by default
+- demo mode disabled by default
+- configurable case-artifact retention
+- filename-minimized provenance manifests
+- security regression coverage
+- deployment guidance in SECURITY.md
+
+These controls improve the application's security posture but do not establish regulatory or institutional cybersecurity compliance.

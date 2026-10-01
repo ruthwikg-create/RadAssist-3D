@@ -56,6 +56,16 @@ export type MeasurementQuality = {
   flags: string[];
 };
 
+export type AdvancedMetrics = {
+  bounding_box_mm: number[] | null;
+  principal_spread_mm: number[] | null;
+  sphericity: number | null;
+  compactness: number | null;
+  surface_to_volume_cm_inv: number | null;
+  foreground_voxels: number;
+  mesh_volume_cm3?: number | null;
+};
+
 export type ModelProvenance = {
   name: string;
   architecture: string;
@@ -80,6 +90,9 @@ export type ModelInfo = {
   labels: Record<string, string>;
   loaded: boolean;
   error: string | null;
+  kind?: "ANATOMY" | "LESION" | string;
+  input_contract?: string | null;
+  supported_source_types?: string[];
 };
 
 export type ModelsResponse = {
@@ -93,6 +106,7 @@ export type BackendHealth = {
   device: string;
   model_loaded: boolean;
   model_error: string | null;
+  demo_enabled: boolean;
   models: Record<string, ModelInfo>;
 };
 
@@ -114,11 +128,27 @@ export type CaseResult = {
 
   label_meshes?: Record<string, LabelMeshData>;
 
+  mesh_diagnostics?: Record<string, string>;
+
   label_component_qa?: Record<string, LabelComponentQA>;
 
   measurement_quality?: MeasurementQuality;
 
+  advanced_metrics?: AdvancedMetrics;
+  input_notes?: string[];
+
   model_provenance?: ModelProvenance;
+
+  model_compatibility?: {
+    status: string;
+    model_domain?: string;
+    expected_plane?: string;
+    expected_inference_roi?: number[];
+    source_type?: string;
+    dimensions?: number[];
+    spacing_mm?: number[];
+    warnings?: string[];
+  };
 
   mesh: MeshData;
 
@@ -143,6 +173,13 @@ export type CaseResult = {
   dicom_sr_result?: Record<string, unknown>;
   uncertainty_status?: Record<string, unknown>;
   input_validation?: Record<string, unknown>;
+  input_manifest?: Array<Record<string, unknown>>;
+  dicom_export?: {
+    status: "GENERATED" | "NOT_AVAILABLE" | "FAILED";
+    reason?: string;
+    segmentation?: Record<string, unknown>;
+    structured_report?: Record<string, unknown>;
+  };
 
   persisted?: boolean;
 };

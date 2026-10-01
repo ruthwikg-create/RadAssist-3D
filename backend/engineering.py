@@ -17,6 +17,19 @@ def sha256_file(path: Path) -> str:
             digest.update(chunk)
     return digest.hexdigest()
 
+
+def build_input_manifest(paths: list[Path]) -> list[dict[str, Any]]:
+    """Create a reproducibility manifest without persisting source filenames."""
+    manifest: list[dict[str, Any]] = []
+    for index, path in enumerate(paths):
+        manifest.append({
+            "index": index,
+            "extension": path.suffix.lower(),
+            "size_bytes": path.stat().st_size,
+            "sha256": sha256_file(path),
+        })
+    return manifest
+
 def validate_input_contract(*, source_type: str, modality: str, dimensions: list[int], spacing_mm: list[float]) -> dict[str, Any]:
     errors: list[str] = []
     if len(dimensions) != 3 or any(int(v) <= 0 for v in dimensions):
@@ -64,7 +77,7 @@ def build_dicom_sr_result(result: dict[str, Any]) -> dict[str, Any]:
         "compatibility": DICOM_SR_COMPATIBILITY,
         "schema_version": SCHEMA_VERSION,
         "modality": "SR",
-        "measurement_groups": [{"tracking_identifier": f"RadAssist:{result.get('request_id')}", "finding": result.get("target"), "measurements": build_structured_measurements(result)["measurements"], "qa": {"status": quality.get("status"), "flags": quality.get("flags", [])}}],
+        "measurement_groups": [{"tracking_identifier": f"RadAssist:{result.get('request_id')}", "finding": result.get("target"), "measurements": build_structured_measurements(result=result)["measurements"], "qa": {"status": quality.get("status"), "flags": quality.get("flags", [])}}],
         "status": "ARCHITECTURE_ONLY_NOT_DICOM_FILE",
     }
 
@@ -76,7 +89,7 @@ def build_provenance(result: dict[str, Any]) -> dict[str, Any]:
         "source": {"type": result.get("source_type"), "modality": result.get("modality"), "dimensions": result.get("original_dimensions"), "spacing_mm": result.get("original_spacing_mm")},
         "model": result.get("model_provenance", {}),
         "measurement": result.get("measurement_quality", {}),
-        "structured_measurements": build_structured_measurements(result),
+        "structured_measurements": build_structured_measurements(result=result),
         "dicom_seg": build_dicom_seg_result(result),
         "dicom_sr": build_dicom_sr_result(result),
     }

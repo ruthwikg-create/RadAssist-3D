@@ -13,22 +13,17 @@ import numpy as np
 import SimpleITK as sitk
 import torch
 try:
-    from backend.model_adapter import SpleenUNetAdapter
+    from backend.model_adapter import MODEL_PATH as ADAPTER_MODEL_PATH, SpleenUNetAdapter
 except ModuleNotFoundError as exc:
     if exc.name != "backend":
         raise
-    from model_adapter import SpleenUNetAdapter
+    from model_adapter import MODEL_PATH as ADAPTER_MODEL_PATH, SpleenUNetAdapter
 from skimage.measure import marching_cubes
 
 
 logger = logging.getLogger("radassist.pipeline")
 
-MODEL_PATH = Path(
-    os.getenv(
-        "RADASSIST_MODEL_PATH",
-        Path(__file__).resolve().parent / "models" / "spleen_unet_model.pt",
-    )
-)
+MODEL_PATH = ADAPTER_MODEL_PATH
 TARGET_SPACING_MM = (1.5, 1.5, 2.0)
 HU_MIN = -57.0
 HU_MAX = 164.0
@@ -42,6 +37,7 @@ SW_OVERLAP = float(os.getenv("RADASSIST_SW_OVERLAP", "0.5"))
 SW_CPU_STITCH = os.getenv("RADASSIST_SW_CPU_STITCH", "true").lower() == "true"
 MESH_STEP_SIZE = int(os.getenv("RADASSIST_MESH_STEP_SIZE", "2"))
 MESH_MAX_VERTICES = int(os.getenv("RADASSIST_MESH_MAX_VERTICES", "250000"))
+MESH_MAX_STEP_SIZE = int(os.getenv("RADASSIST_MESH_MAX_STEP_SIZE", "16"))
 MAX_UPLOAD_BYTES = int(os.getenv("RADASSIST_MAX_UPLOAD_BYTES", str(512 * 1024 * 1024)))
 MAX_EXTRACTED_BYTES = int(os.getenv("RADASSIST_MAX_EXTRACTED_BYTES", str(2 * 1024 * 1024 * 1024)))
 MAX_BROWSER_PREVIEW_DIM = int(os.getenv("RADASSIST_MAX_BROWSER_PREVIEW_DIM", "128"))
@@ -70,6 +66,7 @@ class VolumeData:
     hu_calibrated: bool = False
     rescale_slope: float | None = None
     rescale_intercept: float | None = None
+    input_notes: list[str] | None = None
 
 
 @dataclass
@@ -102,6 +99,8 @@ class SegmentationResult:
     mesh_step_size: int
     measurement_quality: dict[str, Any] | None = None
     model_provenance: dict[str, Any] | None = None
+    advanced_metrics: dict[str, Any] | None = None
+    input_notes: list[str] | None = None
     target: str = "spleen"
     is_demo: bool = False
 
@@ -128,8 +127,8 @@ class SpleenSegmentationModel:
         self.backend = SpleenUNetAdapter(self.checkpoint_path)
 
         self.checkpoint_sha256 = self.backend.checkpoint_sha256
-        self.validation_dice = 0.961
-        self.config: dict[str, Any] = {}
+        self.validation_dice = self.backend.validation_dice
+        self.config: dict[str, Any] = self.backend.metadata()
         self.inference_lock = threading.Lock()
 
     @torch.inference_mode()
@@ -150,7 +149,7 @@ class SpleenSegmentationModel:
         # to SimpleITK order before restoring image geometry.
         model_array = np.transpose(array, (2, 1, 0))
 
-        mask_model_array = self.backend.predict(model_array)
+        mask_model_array = self.backend.predict(model_array, already_scaled=False)
 
         if mask_model_array.ndim != 3:
             raise ValueError(
@@ -329,8 +328,46 @@ def load_medical_volume(input_paths: list[Path], extraction_root: Path) -> Volum
 
     if len(input_paths) == 1 and nii:
         image = sitk.ReadImage(str(input_paths[0]))
+        input_notes: list[str] = []
+
+        if image.GetDimension() == 4:
+            # A 4D NIfTI can represent time, echo, phase, or another extra
+            # acquisition dimension. The current anatomy models accept one
+            # 3D volume, so select a deterministic frame rather than failing
+            # with the generic "requires a 3D volume" message.
+            frame_index = int(os.getenv("RADASSIST_NIFTI_FRAME_INDEX", "0"))
+            size = list(image.GetSize())
+            frame_count = int(size[3])
+            if frame_count <= 0:
+                raise ValueError("The 4D NIfTI contains no usable frames.")
+            if frame_index < 0 or frame_index >= frame_count:
+                raise ValueError(
+                    f"RADASSIST_NIFTI_FRAME_INDEX={frame_index} is outside "
+                    f"the available 4D frame range 0..{frame_count - 1}."
+                )
+            extract_size = [int(v) for v in size]
+            extract_size[3] = 0
+            extract_index = [0, 0, 0, frame_index]
+            image = sitk.Extract(image, extract_size, extract_index)
+            input_notes.append(
+                f"4D NIfTI reduced to frame {frame_index} of {frame_count}; "
+                "the selected frame is not independently verified as the intended acquisition."
+            )
+
         if image.GetDimension() != 3:
-            raise ValueError("RadAssist 3D requires a 3D NIfTI volume.")
+            raise ValueError(
+                f"Unsupported NIfTI dimensionality: {image.GetDimension()}D. "
+                "RadAssist models currently require a 3D spatial volume."
+            )
+
+        if image.GetNumberOfComponentsPerPixel() > 1:
+            components = image.GetNumberOfComponentsPerPixel()
+            image = sitk.VectorIndexSelectionCast(image, 0)
+            input_notes.append(
+                f"Vector NIfTI reduced to component 0 of {components}; "
+                "the selected component is not independently verified as the intended acquisition."
+            )
+
         return VolumeData(
             image=image,
             source_type="NIFTI",
@@ -339,6 +376,7 @@ def load_medical_volume(input_paths: list[Path], extraction_root: Path) -> Volum
             hu_calibrated=False,
             rescale_slope=None,
             rescale_intercept=None,
+            input_notes=input_notes,
         )
 
     if len(input_paths) == 1 and zips:
@@ -467,19 +505,27 @@ def _physical_mesh_from_mask(mask: sitk.Image, step_size: int) -> MeshData:
     cropped = mask_array[z0:z1, y0:y1, x0:x1]
 
     spacing_xyz = np.asarray(mask.GetSpacing(), dtype=np.float64)
-    spacing_zyx = (float(spacing_xyz[2]), float(spacing_xyz[1]), float(spacing_xyz[0]))
+
+    # Request voxel-space coordinates from marching_cubes.  The previous
+    # implementation supplied physical spacing here and then multiplied the
+    # coordinates by spacing again after adding the crop offset, which applied
+    # spacing twice and could make the independent mesh-volume cross-check
+    # wildly disagree with the native labelmap volume.
     verts_zyx, faces, _, _ = marching_cubes(
         cropped,
         level=0.5,
-        spacing=spacing_zyx,
+        spacing=(1.0, 1.0, 1.0),
         step_size=max(1, int(step_size)),
     )
 
     # marching_cubes returns [z, y, x] positions relative to the cropped
-    # array. Convert them to full-image [x, y, z] millimetre coordinates.
+    # array. Add the crop offset in voxel coordinates, then convert exactly
+    # once to physical [x, y, z] millimetres.
     offset_zyx = np.asarray([z0, y0, x0], dtype=np.float64)
     verts_zyx = verts_zyx + offset_zyx
-    xyz = np.column_stack([verts_zyx[:, 2], verts_zyx[:, 1], verts_zyx[:, 0]]) * spacing_xyz
+    xyz = np.column_stack(
+        [verts_zyx[:, 2], verts_zyx[:, 1], verts_zyx[:, 0]]
+    ) * spacing_xyz
 
     direction = np.asarray(mask.GetDirection(), dtype=np.float64).reshape(3, 3)
     origin = np.asarray(mask.GetOrigin(), dtype=np.float64)
@@ -493,18 +539,52 @@ def _physical_mesh_from_mask(mask: sitk.Image, step_size: int) -> MeshData:
 
 
 def create_mesh(mask: sitk.Image) -> tuple[MeshData, int]:
-    steps = sorted(set([
-        max(1, MESH_STEP_SIZE),
-        max(2, MESH_STEP_SIZE + 1),
-        max(3, MESH_STEP_SIZE + 2),
-        max(4, MESH_STEP_SIZE + 3),
-        max(5, MESH_STEP_SIZE + 4),
-    ]))
+    """Generate a renderable surface with adaptive sampling.
+
+    The labelmap remains the authoritative quantitative representation. Mesh
+    sampling is only a visualization/cross-check representation, so large
+    high-resolution MRI masks are allowed to use a coarser marching-cubes
+    step rather than silently returning an empty surface.
+    """
+    if not np.any(sitk.GetArrayFromImage(mask) > 0):
+        return MeshData([], [], 0, 0), 0
+
+    base = max(1, int(MESH_STEP_SIZE))
+    configured_max = max(base, int(MESH_MAX_STEP_SIZE))
+
+    # Dense 0.5 mm MRI masks can exceed a browser-safe vertex budget at the
+    # default step. Larger marching-cubes steps are explicitly supported by
+    # scikit-image and produce a coarser but still topologically valid surface.
+    candidates = {
+        base,
+        base + 1,
+        base + 2,
+        base + 3,
+        base + 4,
+        base * 2,
+        base * 3,
+        base * 4,
+        configured_max,
+    }
+    steps = sorted(step for step in candidates if 1 <= step <= configured_max)
+
+    last_mesh: MeshData | None = None
+    last_step = steps[-1] if steps else base
+
     for step in steps:
         mesh = _physical_mesh_from_mask(mask, step)
+        last_mesh = mesh
+        last_step = step
         if mesh.vertex_count <= MESH_MAX_VERTICES:
             return mesh, step
-    raise RuntimeError("The generated segmentation surface exceeds the configured mesh vertex budget.")
+
+    # Never silently replace a non-empty segmentation with a zero-vertex
+    # surface. If the budget is still exceeded, return the coarsest successful
+    # surface; native labelmap measurements remain authoritative.
+    if last_mesh is not None and last_mesh.vertex_count > 0:
+        return last_mesh, last_step
+
+    raise RuntimeError("Unable to extract a surface from the non-empty segmentation mask.")
 
 
 def _make_browser_preview(image: sitk.Image) -> sitk.Image:
@@ -699,6 +779,77 @@ def _checkpoint_sha256(path: Path) -> str:
             digest.update(chunk)
     return digest.hexdigest()
 
+def advanced_shape_metrics(
+    mask: sitk.Image,
+    surface_area_cm2: float | None = None,
+    mesh_volume_cm3: float | None = None,
+) -> dict[str, Any]:
+    """Compute geometry descriptors that are useful for research QA.
+
+    These are descriptive shape metrics, not clinical biomarkers. Principal
+    spread is estimated from a bounded sample of foreground voxels to keep
+    memory predictable on large volumes.
+    """
+    array = sitk.GetArrayFromImage(mask)
+    foreground = array > 0
+    voxel_count = int(np.count_nonzero(foreground))
+    if voxel_count == 0:
+        return {
+            "bounding_box_mm": None,
+            "principal_spread_mm": None,
+            "sphericity": None,
+            "compactness": None,
+            "surface_to_volume_cm_inv": None,
+            "foreground_voxels": 0,
+        }
+
+    coords_zyx = np.argwhere(foreground)
+    spacing = np.asarray(mask.GetSpacing(), dtype=np.float64)
+    direction = np.asarray(mask.GetDirection(), dtype=np.float64).reshape(3, 3)
+    origin = np.asarray(mask.GetOrigin(), dtype=np.float64)
+
+    mins = coords_zyx.min(axis=0).astype(np.float64)
+    maxs = coords_zyx.max(axis=0).astype(np.float64)
+    # Bounding-box extent is reported in the image's physical axes. Direction
+    # does not change the voxel-axis lengths.
+    bbox_xyz = (maxs[::-1] - mins[::-1] + 1.0) * spacing
+
+    max_samples = 200_000
+    if len(coords_zyx) > max_samples:
+        stride = max(1, len(coords_zyx) // max_samples)
+        coords_zyx = coords_zyx[::stride][:max_samples]
+
+    xyz_index = coords_zyx[:, ::-1].astype(np.float64)
+    physical = xyz_index * spacing
+    physical = physical @ direction.T + origin
+    centered = physical - physical.mean(axis=0, keepdims=True)
+    covariance = np.cov(centered, rowvar=False) if len(physical) > 1 else np.zeros((3, 3))
+    eigenvalues = np.maximum(np.linalg.eigvalsh(covariance), 0.0)
+    principal_spread = (2.0 * np.sqrt(eigenvalues))[::-1]
+
+    volume = voxel_count * float(np.prod(spacing)) / 1000.0
+    sphericity = None
+    compactness = None
+    surface_to_volume = None
+    if surface_area_cm2 is not None and surface_area_cm2 > 0 and volume > 0:
+        sphericity = float(
+            (np.pi ** (1.0 / 3.0) * (6.0 * volume) ** (2.0 / 3.0))
+            / surface_area_cm2
+        )
+        compactness = float(36.0 * np.pi * volume * volume / (surface_area_cm2 ** 3))
+        surface_to_volume = float(surface_area_cm2 / volume)
+
+    return {
+        "bounding_box_mm": [round(float(v), 3) for v in bbox_xyz],
+        "principal_spread_mm": [round(float(v), 3) for v in principal_spread],
+        "sphericity": round(sphericity, 5) if sphericity is not None else None,
+        "compactness": round(compactness, 5) if compactness is not None else None,
+        "surface_to_volume_cm_inv": round(surface_to_volume, 5) if surface_to_volume is not None else None,
+        "foreground_voxels": voxel_count,
+        "mesh_volume_cm3": mesh_volume_cm3,
+    }
+
+
 def to_serializable(result: SegmentationResult, case_id: str, preview_url: str, mask_url: str) -> dict[str, Any]:
     return {
         "request_id": case_id,
@@ -723,6 +874,8 @@ def to_serializable(result: SegmentationResult, case_id: str, preview_url: str, 
         },
         "measurement_quality": result.measurement_quality or {},
         "model_provenance": result.model_provenance or {},
+        "advanced_metrics": result.advanced_metrics or {},
+        "input_notes": result.input_notes or [],
         "mesh": {
             "vertices": result.mesh.vertices,
             "faces": result.mesh.faces,
@@ -766,11 +919,23 @@ class RadAssistInferenceEngine:
         original_dimensions = [int(v) for v in original_ct.GetSize()]
 
         canonical = canonicalize_ct(original_ct)
-        resampled = resample_image(canonical, target_spacing=TARGET_SPACING_MM, interpolator=sitk.sitkLinear, pixel_id=sitk.sitkFloat32)
-        model_input = normalize_ct_for_model(resampled)
-
+        model_spacing = tuple(
+            float(v)
+            for v in self.model.config.get(
+                "required_spacing_mm",
+                TARGET_SPACING_MM,
+            )
+        )
+        resampled = resample_image(
+            canonical,
+            target_spacing=model_spacing,
+            interpolator=sitk.sitkLinear,
+            pixel_id=sitk.sitkFloat32,
+        )
+        # The checkpoint-aware adapter owns intensity preprocessing so runtime
+        # preprocessing cannot silently diverge from the loaded model artifact.
         with self.model.inference_lock:
-            predicted_resampled_mask = self.model.predict(model_input)
+            predicted_resampled_mask = self.model.predict(resampled)
 
         mask = sitk.Resample(
             predicted_resampled_mask,
@@ -794,6 +959,11 @@ class RadAssistInferenceEngine:
             loaded.rescale_slope,
             loaded.rescale_intercept,
         )
+        advanced_metrics = advanced_shape_metrics(
+            mask,
+            surface_area_cm2=measurement_quality.get("surface_area_cm2"),
+            mesh_volume_cm3=measurement_quality.get("mesh_volume_cm3"),
+        )
         elapsed = perf_counter() - start
         result = SegmentationResult(
             mesh=mesh,
@@ -815,22 +985,29 @@ class RadAssistInferenceEngine:
             processing_seconds=round(elapsed, 3),
             mesh_step_size=actual_step,
             measurement_quality=measurement_quality,
+            advanced_metrics=advanced_metrics,
+            input_notes=loaded.input_notes or [],
             model_provenance={
-    "name": "RadAssist Spleen CT Segmentation",
-    "architecture": "MONAI UNet 3D",
-    "dataset": "Medical Segmentation Decathlon Task09 Spleen",
-    "checkpoint_loaded": True,
-    "checkpoint_sha256": self.model.checkpoint_sha256,
-    "benchmark_mean_dice": 0.961,
-    "preprocessing": {
-        "orientation": "RAS",
-        "spacing_mm": list(TARGET_SPACING_MM),
-        "hu_range": [HU_MIN, HU_MAX],
-        "normalization": "Scale HU range [-57, 164] to [0, 1]",
-        "roi_size": [96, 96, 96],
-        "sliding_window_overlap": 0.5,
-    },
-},
+                "name": "RadAssist Spleen CT Segmentation",
+                "architecture": self.model.config.get("architecture", "Unknown"),
+                "dataset": "Medical Segmentation Decathlon Task09 Spleen",
+                "checkpoint_loaded": True,
+                "checkpoint_sha256": self.model.checkpoint_sha256,
+                "benchmark_mean_dice": self.model.validation_dice,
+                "preprocessing": {
+                    "orientation": "RAS",
+                    "spacing_mm": list(self.model.config.get("required_spacing_mm", TARGET_SPACING_MM)),
+                    "hu_range": self.model.config.get("intensity_range_hu", [HU_MIN, HU_MAX]),
+                    "normalization": (
+                        "Scale intensity range and nonzero z-score"
+                        if self.model.config.get("normalize_nonzero")
+                        else "Scale intensity range to [0, 1]"
+                    ),
+                    "roi_size": self.model.config.get("roi_size", [96, 96, 96]),
+                    "sliding_window_overlap": self.model.config.get("overlap", SW_OVERLAP),
+                },
+                "checkpoint_metadata": self.model.config,
+            },
         )
         case_id = case_directory.name
         preview_path = case_directory / "preview.nii"

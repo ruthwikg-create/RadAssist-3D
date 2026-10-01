@@ -13,10 +13,12 @@ import SimpleITK as sitk
 #   python -c "from backend.multimodel_engine import ..."
 # and direct backend-style imports.
 try:
+    from .brain_tumor_model_adapter import BrainTumorBraTSAdapter
     from .heart_model_adapter import CardiacVentricularAdapter
     from .pipeline import (
         create_mesh,
         _mesh_geometry_metrics,
+        advanced_shape_metrics,
         MeshData,
         load_medical_volume,
         write_sanitized_mask,
@@ -24,10 +26,12 @@ try:
     )
     from .prostate_model_adapter import ProstateMRIAdapter
 except ImportError:
+    from brain_tumor_model_adapter import BrainTumorBraTSAdapter
     from heart_model_adapter import CardiacVentricularAdapter
     from pipeline import (
         create_mesh,
         _mesh_geometry_metrics,
+        advanced_shape_metrics,
         MeshData,
         load_medical_volume,
         write_sanitized_mask,
@@ -37,6 +41,16 @@ except ImportError:
 
 
 TARGETS = {
+    "brain_tumor": {
+        "display_name": "Brain Tumor",
+        "modality": "MR",
+        "labels": {
+            0: "background",
+            1: "tumor core",
+            2: "whole tumor",
+            4: "enhancing tumor",
+        },
+    },
     "heart": {
         "display_name": "Heart",
         "modality": "MR",
@@ -189,18 +203,77 @@ class MultiModelInferenceEngine:
 
     def __init__(
         self,
-        heart_model: CardiacVentricularAdapter,
-        prostate_model: ProstateMRIAdapter,
+        heart_model: CardiacVentricularAdapter | None = None,
+        prostate_model: ProstateMRIAdapter | None = None,
+        brain_tumor_model: BrainTumorBraTSAdapter | None = None,
     ) -> None:
         self.models = {
-            "heart": heart_model,
-            "prostate": prostate_model,
+            key: model
+            for key, model in {
+                "heart": heart_model,
+                "prostate": prostate_model,
+                "brain_tumor": brain_tumor_model,
+            }.items()
+            if model is not None
         }
 
         self.locks = {
-            "heart": threading.Lock(),
-            "prostate": threading.Lock(),
+            key: threading.Lock()
+            for key in self.models
         }
+
+    @staticmethod
+    def _load_brain_tumor_channels(
+        input_paths: list[Path],
+    ) -> tuple[list[sitk.Image], str, list[str]]:
+        nii = [
+            path for path in input_paths
+            if path.name.lower().endswith(".nii")
+            or path.name.lower().endswith(".nii.gz")
+        ]
+        if len(nii) != 4:
+            raise ValueError(
+                "Brain tumor research inference requires four NIfTI files: T1c, T1, T2 and FLAIR."
+            )
+
+        def channel_rank(path: Path) -> int:
+            name = path.name.lower()
+            if "flair" in name:
+                return 3
+            if "t1c" in name or "t1ce" in name or "t1_gd" in name:
+                return 0
+            if "t2" in name:
+                return 2
+            if "t1" in name:
+                return 1
+            return 99
+
+        ranked = sorted(nii, key=channel_rank)
+        if [channel_rank(path) for path in ranked] != [0, 1, 2, 3]:
+            raise ValueError(
+                "Could not identify all four BraTS channels from filenames. "
+                "Use filenames containing T1c, T1, T2 and FLAIR."
+            )
+
+        channels = [sitk.ReadImage(str(path)) for path in ranked]
+        reference = channels[0]
+        for index, image in enumerate(channels[1:], start=1):
+            if image.GetDimension() != 3 or reference.GetDimension() != 3:
+                raise ValueError("All BraTS MRI channels must be 3D NIfTI volumes.")
+            if image.GetSize() != reference.GetSize():
+                raise ValueError(f"BraTS channel {index} dimensions do not match T1c.")
+            if not np.allclose(image.GetSpacing(), reference.GetSpacing(), atol=1e-5):
+                raise ValueError(f"BraTS channel {index} spacing does not match T1c.")
+            if not np.allclose(image.GetDirection(), reference.GetDirection(), atol=1e-5):
+                raise ValueError(f"BraTS channel {index} direction does not match T1c.")
+            if not np.allclose(image.GetOrigin(), reference.GetOrigin(), atol=1e-5):
+                raise ValueError(f"BraTS channel {index} origin does not match T1c.")
+
+        notes = [
+            "BraTS channel contract: T1c, T1, T2, FLAIR.",
+            "The four MRI channels are required to be pre-aligned; RadAssist does not silently register or resample them for this research model.",
+        ]
+        return channels, "NIFTI", notes
 
     @staticmethod
     def _load_input(
@@ -247,6 +320,48 @@ class MultiModelInferenceEngine:
             "faces": [],
             "vertex_count": 0,
             "face_count": 0,
+        }
+
+    @staticmethod
+    def _model_compatibility(
+        target: str,
+        source_type: str,
+        dimensions: list[int],
+        spacing_mm: list[float],
+    ) -> dict[str, Any]:
+        """Report input/model compatibility without pretending to validate clinical series identity."""
+        if target != "heart":
+            return {
+                "status": "NOT_APPLICABLE",
+                "reason": "No additional series-level compatibility gate is defined for this model.",
+            }
+
+        warnings: list[str] = []
+        if len(dimensions) != 3 or len(spacing_mm) != 3:
+            warnings.append("The heart model requires a 3D volume with three spatial dimensions.")
+        else:
+            x, y, z = dimensions
+            if min(x, y) < 128:
+                warnings.append("In-plane dimensions are unusually small for the 256×256 cardiac model input.")
+            if z < 5:
+                warnings.append("Very few slices are available for a short-axis cardiac volume.")
+            if any(value <= 0 for value in spacing_mm):
+                warnings.append("One or more voxel spacings are invalid.")
+
+        if source_type.upper() == "NIFTI":
+            warnings.append("NIfTI does not reliably encode the clinical MR series type; verify that the volume is cardiac short-axis MR.")
+        else:
+            warnings.append("Verify that the selected DICOM series is cardiac short-axis MR; this application does not infer sequence identity from appearance alone.")
+
+        return {
+            "status": "REVIEW_REQUIRED",
+            "model_domain": "Cardiac MRI ventricular short-axis research model",
+            "expected_plane": "Short-axis cardiac MR",
+            "expected_inference_roi": [256, 256],
+            "source_type": source_type,
+            "dimensions": dimensions,
+            "spacing_mm": spacing_mm,
+            "warnings": warnings,
         }
 
     @staticmethod
@@ -426,6 +541,12 @@ class MultiModelInferenceEngine:
 
         return metrics
 
+    def _brain_tumor_predict(
+        self,
+        channels: list[sitk.Image],
+    ) -> sitk.Image:
+        return self.models["brain_tumor"].predict(channels)
+
     def _heart_predict(
         self,
         image: sitk.Image,
@@ -513,11 +634,21 @@ class MultiModelInferenceEngine:
 
         start = perf_counter()
 
-        loaded = self._load_input(
-            input_paths,
-            extraction_root,
-            target,
-        )
+        channel_notes: list[str] = []
+        if target == "brain_tumor":
+            brain_channels, source_type, channel_notes = self._load_brain_tumor_channels(input_paths)
+            loaded = type("BrainTumorLoaded", (), {
+                "image": brain_channels[0],
+                "source_type": source_type,
+                "modality": "MR",
+                "input_notes": channel_notes,
+            })()
+        else:
+            loaded = self._load_input(
+                input_paths,
+                extraction_root,
+                target,
+            )
 
         image = loaded.image
 
@@ -531,16 +662,21 @@ class MultiModelInferenceEngine:
             for v in image.GetSize()
         ]
 
+        model_compatibility = self._model_compatibility(
+            target,
+            loaded.source_type,
+            original_dimensions,
+            original_spacing,
+        )
+
         # Keep model execution serialized per model.
         with self.locks[target]:
-            if target == "heart":
-                mask = self._heart_predict(
-                    image
-                )
+            if target == "brain_tumor":
+                mask = self._brain_tumor_predict(brain_channels)
+            elif target == "heart":
+                mask = self._heart_predict(image)
             else:
-                mask = self._prostate_predict(
-                    image
-                )
+                mask = self._prostate_predict(image)
 
                 # Post-process independently per anatomical label. The raw model
         # prediction is preserved only in provenance/QA; quantitative output
@@ -551,6 +687,7 @@ class MultiModelInferenceEngine:
 
         label_meshes: dict[str, Any] = {}
         label_mesh_steps: list[int] = []
+        mesh_diagnostics: dict[str, str] = {}
 
         for label_value, label_name in TARGETS[target]["labels"].items():
             if label_value == 0:
@@ -577,10 +714,11 @@ class MultiModelInferenceEngine:
 
                 label_mesh_steps.append(label_step)
 
-            except Exception:
+            except Exception as mesh_error:
                 # Keep the anatomical label in the response even when
-                # surface extraction fails. The original segmentation
-                # remains available for quantitative analysis.
+                # surface extraction fails. Record the reason instead of
+                # silently presenting an empty surface.
+                mesh_diagnostics[f"label_{label_value}"] = str(mesh_error)
                 label_meshes[str(label_value)] = {
                     "label": int(label_value),
                     "name": label_name,
@@ -611,13 +749,14 @@ class MultiModelInferenceEngine:
 
             mesh_volume_cm3 = None
 
-        except Exception:
+        except Exception as mesh_error:
             mesh = self._empty_mesh()
             actual_step = max(
                 label_mesh_steps,
                 default=0,
             )
             mesh_volume_cm3 = None
+            mesh_diagnostics["combined"] = str(mesh_error)
 
         label_metrics = (
             self._label_metrics(
@@ -725,12 +864,39 @@ class MultiModelInferenceEngine:
             intensity_stats,
         )
         quality["component_cleanup"] = component_cleanup
+        advanced_metrics = advanced_shape_metrics(
+            mask,
+            surface_area_cm2=surface_area_cm2,
+            mesh_volume_cm3=mesh_volume_cm3,
+        )
 
         model = self.models[target]
 
         # The two official bundle configurations provide different
         # validation metadata, so keep those distinctions explicit.
-        if target == "heart":
+        if target == "brain_tumor":
+            raw_provenance = self.models[target].provenance()
+            validation_per_class = {
+                "tumor core": 0.8559,
+                "whole tumor": 0.9026,
+                "enhancing tumor": 0.7905,
+            }
+            validation_dice = 0.8518
+            warnings = [
+                "BraTS model is an example research model and is not for diagnostic use.",
+                "The reported Dice values are bundle-level validation metrics, not patient-specific accuracy.",
+                "Input must contain aligned T1c, T1, T2 and FLAIR MRI channels.",
+            ]
+            provenance = {
+                "name": raw_provenance["name"],
+                "architecture": raw_provenance["architecture"],
+                "dataset": "BraTS 2018 Challenge Dataset",
+                "checkpoint_loaded": True,
+                "checkpoint_sha256": raw_provenance["checkpoint_sha256"],
+                "preprocessing": raw_provenance["preprocessing"],
+                "labels": {str(k): v for k, v in TARGETS[target]["labels"].items()},
+            }
+        elif target == "heart":
             validation_per_class: dict[
                 str, float
             ] = {}
@@ -941,9 +1107,15 @@ class MultiModelInferenceEngine:
 
             "measurement_quality": quality,
 
+            "advanced_metrics": advanced_metrics,
+
+            "input_notes": (getattr(loaded, "input_notes", None) or []) + channel_notes,
+
             "model_provenance": (
                 provenance
             ),
+
+            "model_compatibility": model_compatibility,
 
             "label_metrics": label_metrics,
 
@@ -959,6 +1131,8 @@ class MultiModelInferenceEngine:
             },
 
             "mesh": mesh,
+
+            "mesh_diagnostics": mesh_diagnostics,
 
             "original_spacing_mm": (
                 original_spacing

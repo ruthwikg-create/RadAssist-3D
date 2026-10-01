@@ -5,16 +5,24 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      RADASSIST_MODEL_PATH: /app/models/spleen_segresnet.pth
+      RADASSIST_MODEL_PATH: ""
       RADASSIST_CASE_ROOT: /app/data/cases
       RADASSIST_CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
-      RADASSIST_ALLOW_DEMO: "true"
+      RADASSIST_TRUSTED_HOSTS: localhost,127.0.0.1
+      RADASSIST_ENABLE_DOCS: "false"
+      RADASSIST_REQUIRE_AUTH: "false"
+      RADASSIST_API_TOKEN: ""
+      RADASSIST_FORCE_HTTPS: "false"
+      RADASSIST_ALLOW_DEMO: "false"
       RADASSIST_MAX_UPLOAD_BYTES: "536870912"
       RADASSIST_MAX_EXTRACTED_BYTES: "2147483648"
       RADASSIST_MESH_MAX_VERTICES: "250000"
+      RADASSIST_MESH_STEP_SIZE: "2"
+      RADASSIST_MESH_MAX_STEP_SIZE: "16"
       RADASSIST_DEVICE: "auto"
     volumes:
       - ./backend/models:/app/models:ro
+      - ./model_training/checkpoints:/app/model_training/checkpoints:ro
       - ./backend/data/cases:/app/data/cases
     ports:
       - "8000:8000"

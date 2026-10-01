@@ -7,6 +7,7 @@ import {
   Check,
   Circle,
   Database,
+  GitCompare,
   Download,
   FileDown,
   LoaderCircle,
@@ -15,6 +16,7 @@ import {
   ScanLine,
   Server,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   UploadCloud,
@@ -26,6 +28,11 @@ import CornerstoneMPRViewer from "./CornerstoneMPRViewer";
 import DemoMPRViewer from "./DemoMPRViewer";
 import Three3DMeshViewer from "./Three3DMeshViewer";
 import MetricsPanel from "./MetricsPanel";
+import AdvancedAnalyticsPanel from "./AdvancedAnalyticsPanel";
+import CaseComparisonPanel from "./CaseComparisonPanel";
+import ResearchAnalyticsPanel from "./ResearchAnalyticsPanel";
+import ClinicalResearchConsole from "./ClinicalResearchConsole";
+import ModelCatalog from "./ModelCatalog";
 import ViewerErrorBoundary from "./ViewerErrorBoundary";
 
 import type {
@@ -37,8 +44,11 @@ import type {
 
 import {
   API_BASE_URL,
+  createAuthenticatedObjectUrl,
   caseBundleUrl,
   caseReportUrl,
+  caseDicomSegUrl,
+  caseDicomSrUrl,
   caseMaskUrl,
   createDemoCase,
   deleteCase,
@@ -49,18 +59,16 @@ import {
   segmentFiles,
 } from "../lib/api";
 
-type Target = "spleen" | "heart" | "prostate";
+type Target = "spleen" | "heart" | "prostate" | "brain_tumor";
 
 const TARGET_ORDER: Target[] = [
   "spleen",
   "heart",
   "prostate",
+  "brain_tumor",
 ];
 
-const FALLBACK_MODELS: Record<
-  Target,
-  ModelInfo
-> = {
+const FALLBACK_MODELS: Record<Target, ModelInfo> = {
   spleen: {
     display_name: "Spleen",
     modality: "CT",
@@ -97,6 +105,21 @@ const FALLBACK_MODELS: Record<
       "0": "background",
       "1": "central gland",
       "2": "peripheral zone",
+    },
+    loaded: false,
+    error: null,
+  },
+
+  brain_tumor: {
+    display_name: "Brain Tumor",
+    modality: "MR",
+    description:
+      "BraTS multimodal brain tumor subregion segmentation",
+    labels: {
+      "0": "background",
+      "1": "tumor core",
+      "2": "whole tumor",
+      "4": "enhancing tumor",
     },
     loaded: false,
     error: null,
@@ -291,6 +314,9 @@ function targetLabel(
     case "prostate":
       return "Prostate MRI";
 
+    case "brain_tumor":
+      return "Brain Tumor MRI";
+
     default:
       return "Spleen CT";
   }
@@ -305,6 +331,9 @@ function targetDescription(
 
     case "prostate":
       return "Zonal segmentation · central gland + peripheral zone";
+
+    case "brain_tumor":
+      return "BraTS tumor subregions · T1c + T1 + T2 + FLAIR";
 
     default:
       return "Spleen segmentation · CT";
@@ -342,6 +371,19 @@ export default function ScanWorkspace() {
     useState<string | null>(
       null,
     );
+
+  const [comparison, setComparison] =
+    useState<CaseResult | null>(null);
+
+  const [activeSection, setActiveSection] =
+    useState<"mpr" | "surface3d" | "metrics" | "qa" | "research">("mpr");
+  const [showSettings, setShowSettings] = useState(false);
+  const [compactWorkspace, setCompactWorkspace] = useState(false);
+  const [showInspector, setShowInspector] = useState(true);
+  const [workstationMode, setWorkstationMode] = useState<"mpr" | "ai" | "research">("research");
+
+  const [protectedVolumeUrl, setProtectedVolumeUrl] =
+    useState<string | null>(null);
 
   const selectedModel =
     backend?.models?.[
@@ -403,24 +445,91 @@ export default function ScanWorkspace() {
     ]);
 
   useEffect(() => {
+    let disposed = false;
+    let objectUrl: string | null = null;
+
+    if (!result || result.is_demo || !result.preview.volume_url) {
+      setProtectedVolumeUrl(null);
+      return () => {};
+    }
+
     void (async () => {
       try {
-        const health =
-          await fetchHealth();
-
-        setBackend(health);
-      } catch {
-        setBackend(null);
-      }
-
-      try {
-        setHistory(
-          await listCases(),
-        );
-      } catch {
-        setHistory([]);
+        const url = await createAuthenticatedObjectUrl(result.preview.volume_url);
+        objectUrl = url;
+        if (!disposed) {
+          setProtectedVolumeUrl(url);
+        } else {
+          URL.revokeObjectURL(url);
+        }
+      } catch (err) {
+        if (!disposed) {
+          setProtectedVolumeUrl(null);
+          setError(
+            err instanceof Error
+              ? `Protected imaging volume could not be loaded: ${err.message}`
+              : "Protected imaging volume could not be loaded.",
+          );
+        }
       }
     })();
+
+    return () => {
+      disposed = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      setProtectedVolumeUrl(null);
+    };
+  }, [result]);
+
+  useEffect(() => {
+    const ids = ["mpr", "surface3d", "metrics", "qa", "research"];
+    const elements = ids.map((id) => document.getElementById(id)).filter(Boolean) as HTMLElement[];
+    if (!elements.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (visible?.target?.id) setActiveSection(visible.target.id as typeof activeSection);
+    }, { rootMargin: "-18% 0px -62% 0px", threshold: [0.15, 0.35, 0.6] });
+    elements.forEach((element) => observer.observe(element));
+    return () => observer.disconnect();
+  }, [result]);
+
+  function jumpToSection(id: typeof activeSection) {
+    setActiveSection(id);
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  useEffect(() => {
+    let disposed = false;
+
+    const refreshStatus = async () => {
+      try {
+        const health = await fetchHealth();
+        if (!disposed) setBackend(health);
+      } catch {
+        if (!disposed) setBackend(null);
+      }
+    };
+
+    void (async () => {
+      await refreshStatus();
+
+      try {
+        const cases = await listCases();
+        if (!disposed) setHistory(cases);
+      } catch {
+        if (!disposed) setHistory([]);
+      }
+    })();
+
+    const timer = window.setInterval(
+      () => void refreshStatus(),
+      5000,
+    );
+
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
   }, []);
 
   function handleTargetChange(
@@ -435,6 +544,7 @@ export default function ScanWorkspace() {
     setError(null);
 
     setResult(null);
+    setComparison(null);
     setStage("ingest");
     setProgress(0);
   }
@@ -451,6 +561,11 @@ export default function ScanWorkspace() {
       setError(
         `${selectedModel.display_name} model is not currently available.`,
       );
+      return;
+    }
+
+    if (selectedTarget === "brain_tumor" && files.length !== 4) {
+      setError("Brain Tumor requires exactly four aligned NIfTI files in this order: T1c, T1, T2, FLAIR.");
       return;
     }
 
@@ -608,6 +723,32 @@ export default function ScanWorkspace() {
     }
   }
 
+  async function compareWithLatestCompatible() {
+    if (!result || working) return;
+
+    const candidate = history.find(
+      (item) =>
+        item.case_id !== result.request_id &&
+        item.target === result.target &&
+        item.modality === result.modality,
+    );
+
+    if (!candidate) {
+      setError("No previous compatible study is available for comparison.");
+      return;
+    }
+
+    setWorking(true);
+    setError(null);
+    try {
+      setComparison(await getCase(candidate.case_id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load comparison study.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
   async function openHistory(
     item: CaseSummary,
   ) {
@@ -623,14 +764,7 @@ export default function ScanWorkspace() {
       setResult(body);
       setFiles([]);
 
-      if (
-        body.target ===
-          "spleen" ||
-        body.target ===
-          "heart" ||
-        body.target ===
-          "prostate"
-      ) {
+      if (body.target === "spleen" || body.target === "heart" || body.target === "prostate" || body.target === "brain_tumor") {
         setSelectedTarget(
           body.target,
         );
@@ -684,6 +818,31 @@ export default function ScanWorkspace() {
     }
   }
 
+  async function refreshCurrentCase() {
+    if (!result || working) return;
+    setWorking(true);
+    setError(null);
+    try {
+      const refreshed = await getCase(result.request_id);
+      setResult(refreshed);
+      setStage("render");
+      setProgress(100);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to refresh the stored QA result.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  function openImportPicker() {
+    const input = document.querySelector<HTMLInputElement>("#radassist-import-input");
+    if (input) {
+      input.click();
+      return;
+    }
+    document.getElementById("cw-import-zone")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   const loadedModelCount =
     backend
       ? Object.values(
@@ -703,1092 +862,116 @@ export default function ScanWorkspace() {
         : "warn";
 
   return (
-    <div className="ra-app">
-      <header className="ra-topbar">
-        <div className="ra-brand">
-          <div
-            className="ra-brand-mark"
-            aria-hidden="true"
-          >
-            <Microscope size={18} />
+    <ClinicalResearchConsole
+      result={result}
+      backend={backend}
+      history={history}
+      mode={workstationMode}
+      onModeChange={setWorkstationMode}
+      onOpenHistory={(item) => void openHistory(item)}
+      onImport={openImportPicker}
+      onRefreshCase={() => void refreshCurrentCase()}
+      onDownload={(path, filename) => void downloadApiFile(path, filename).catch((err) => setError(err instanceof Error ? err.message : "Download failed."))}
+      onSetError={setError}
+      onCompare={() => void compareWithLatestCompatible()}
+      onSettings={() => setShowSettings((value: boolean) => !value)}
+      importContent={
+        <div className="cw-import-stack">
+          <ModelCatalog
+            selectedTarget={selectedTarget}
+            models={backend?.models ?? {}}
+            working={working}
+            onSelect={handleTargetChange}
+          />
+          <div className="cw-upload-contract">
+            <div>
+              <span className="cw-upload-contract-label">SELECTED ANALYSIS</span>
+              <b>{targetLabel(selectedTarget)}</b>
+              <small>{targetDescription(selectedTarget)}</small>
+            </div>
+            <div>
+              <span className="cw-upload-contract-label">EXPECTED DATA</span>
+              <b>{selectedTarget === "brain_tumor" ? "MR ×4" : selectedModel.modality}</b>
+              <small>{selectedTarget === "brain_tumor" ? "T1c · T1 · T2 · FLAIR, aligned" : "DICOM series or NIfTI volume"}</small>
+            </div>
           </div>
-
-          <div className="min-w-0">
-            <div className="ra-brand-title">
-              <span>
-                RadAssist 3D
-              </span>
-
-              <span className="ra-brand-role">
-                Research workstation
-              </span>
-
-              <span className="ra-build-tag">
-                FINAL · VERIFIED
-              </span>
-            </div>
-
-            <div className="ra-brand-subtitle">
-              Multimodel segmentation ·
-              MPR · volumetrics · 3D
-              surfaces
-            </div>
+          <Dropzone
+            files={files}
+            onFilesChange={setFiles}
+            disabled={working}
+            modalityLabel={selectedTarget === "brain_tumor" ? "MR ×4" : selectedModel.modality === "MR" ? "MR" : "CT"}
+          />
+          <div className="cw-import-actions">
+            <button type="button" className="cw-primary" disabled={working || !files.length || !selectedModel.loaded} onClick={() => void analyze()}>
+              {working ? "Processing…" : `Analyze ${selectedModel.display_name}`}
+            </button>
+            <button type="button" className="cw-secondary" disabled={working || !backend?.demo_enabled} onClick={() => void runDemo()}>
+              Run demo
+            </button>
           </div>
         </div>
-
-        <div
-          className="ra-studybar"
-          aria-live="polite"
-        >
-          <span className="ra-study-kicker">
-            CURRENT STUDY
-          </span>
-
-          <div className="ra-study-title-row">
-            <span
-              className="ra-study-name"
-              title={selectedSummary}
-            >
-              {selectedSummary}
-            </span>
-
-            {result?.is_demo && (
-              <span className="ra-meta-chip demo">
-                SYNTHETIC
-              </span>
-            )}
+      }
+      viewerContent={
+        result ? (
+          <div className="cw-viewer-stack">
+            <ViewerErrorBoundary label="MPR">
+              {result.is_demo ? (
+                <DemoMPRViewer />
+              ) : (
+                <CornerstoneMPRViewer volumeUrl={protectedVolumeUrl ?? ""} caseId={result.request_id} />
+              )}
+            </ViewerErrorBoundary>
+            <ViewerErrorBoundary label="3D">
+              <Three3DMeshViewer
+                mesh={result.mesh}
+                labelMeshes={result.label_meshes}
+                meshDiagnostics={result.mesh_diagnostics}
+                target={result.target}
+                voxelCount={result.voxel_count}
+                onImport={openImportPicker}
+                onRetry={files.length && selectedTarget === result.target ? () => void analyze() : undefined}
+              />
+            </ViewerErrorBoundary>
+            <div className="cw-viewer-metrics">
+              <MetricsPanel result={result} />
+              <AdvancedAnalyticsPanel result={result} />
+              {comparison ? <CaseComparisonPanel current={result} previous={comparison} /> : null}
+            </div>
           </div>
-
-          <div className="ra-study-meta">
-            {result ? (
-              <>
-                <span className="ra-meta-chip">
-                  {result.source_type}
-                </span>
-
-                <span className="ra-meta-chip">
-                  {result.modality}
-                </span>
-
-                <span className="ra-meta-chip">
-                  {result.original_dimensions.join(
-                    " × ",
-                  )}
-                </span>
-
-                <span className="ra-meta-chip">
-                  {result.original_spacing_mm
-                    .map((v) =>
-                      v.toFixed(2),
-                    )
-                    .join(" × ")}{" "}
-                  mm
-                </span>
-
-                <span
-                  className={`ra-meta-chip ${
-                    (
-                      result
-                        .measurement_quality
-                        ?.status ??
-                      "REVIEW"
-                    ).toLowerCase()
-                  }`}
-                >
-                  {result
-                    .measurement_quality
-                    ?.status ??
-                    "REVIEW"}{" "}
-                  QA
-                </span>
-              </>
+        ) : null
+      }
+      mprContent={
+        result ? (
+          <ViewerErrorBoundary label="MPR">
+            {result.is_demo ? (
+              <DemoMPRViewer />
             ) : (
-              <span>
-                Select a model and
-                import a research
-                imaging study
-              </span>
+              <CornerstoneMPRViewer volumeUrl={protectedVolumeUrl ?? ""} caseId={result.request_id} />
             )}
-          </div>
-        </div>
-
-        <div className="ra-statusbar">
-          <div
-            className={`ra-status-chip ${statusClass}`}
-            title={
-              backend?.model_error ??
-              undefined
-            }
-          >
-            <span
-              className="ra-live-dot"
-              aria-hidden="true"
+          </ViewerErrorBoundary>
+        ) : null
+      }
+      surfaceContent={
+        result ? (
+          <ViewerErrorBoundary label="3D">
+            <Three3DMeshViewer
+              mesh={result.mesh}
+              labelMeshes={result.label_meshes}
+              meshDiagnostics={result.mesh_diagnostics}
+              target={result.target}
             />
-
-            <Server
-              size={13}
-              aria-hidden="true"
-            />
-
-            <span>
-              {!backend
-                ? "Backend offline"
-                : `${loadedModelCount}/3 AI models ready · ${backend.device}`}
-            </span>
+          </ViewerErrorBoundary>
+        ) : null
+      }
+      metricsContent={
+        result ? (
+          <div className="cw-viewer-metrics">
+            <MetricsPanel result={result} />
+            <AdvancedAnalyticsPanel result={result} />
+            {comparison ? <CaseComparisonPanel current={result} previous={comparison} /> : null}
           </div>
-
-          <button
-            type="button"
-            className="ra-icon-btn"
-            onClick={() =>
-              window.location.reload()
-            }
-            aria-label="Refresh workspace"
-            title="Refresh workspace"
-          >
-            <RefreshCw size={15} />
-          </button>
-        </div>
-      </header>
-
-      <nav
-        className="ra-navbar"
-        aria-label="Workspace navigation"
-      >
-        <div className="ra-navbar-group">
-          <a
-            href="#mpr"
-            className="ra-nav-link active"
-          >
-            <ScanLine size={13} />
-            MPR
-          </a>
-
-          <a
-            href="#surface3d"
-            className="ra-nav-link"
-          >
-            <Database size={13} />
-            3D Surface
-          </a>
-
-          <a
-            href="#metrics"
-            className="ra-nav-link"
-          >
-            <Activity size={13} />
-            Quantification
-          </a>
-
-          <a
-            href="#qa"
-            className="ra-nav-link"
-          >
-            <ShieldCheck size={13} />
-            QA & Provenance
-          </a>
-        </div>
-
-        <div className="ra-navbar-hint">
-          Keyboard: ←→ slices ·
-          W/L · pan · zoom · Esc
-          exits fullscreen
-        </div>
-      </nav>
-
-      <div className="ra-layout">
-        <aside className="ra-sidebar">
-          <section className="ra-sidebar-section">
-            <div className="ra-import-card ra-enter ra-enter-1">
-              <div className="ra-import-head">
-                <div>
-                  <div className="ra-import-title">
-                    Study intake
-                  </div>
-
-                  <div className="ra-import-subtitle">
-                    Local research
-                    workflow · no
-                    cloud upload
-                    required
-                  </div>
-                </div>
-
-                <div
-                  className="ra-mini-icon"
-                  aria-hidden="true"
-                >
-                  <UploadCloud size={15} />
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  Segmentation model
-                </div>
-
-                <div className="grid gap-2">
-                  {TARGET_ORDER.map(
-                    (target) => {
-                      const model =
-                        backend?.models?.[
-                          target
-                        ] ??
-                        FALLBACK_MODELS[
-                          target
-                        ];
-
-                      const selected =
-                        selectedTarget ===
-                        target;
-
-                      /*
-                       * IMPORTANT:
-                       * Model availability should NOT
-                       * prevent selecting an anatomy.
-                       *
-                       * The Analyze button below is
-                       * responsible for checking
-                       * model.loaded.
-                       */
-                      const disabled =
-                        working;
-
-                      return (
-                        <button
-                          key={target}
-                          type="button"
-                          disabled={
-                            disabled
-                          }
-                          onClick={() =>
-                            handleTargetChange(
-                              target,
-                            )
-                          }
-                          className={`w-full rounded-xl border p-3 text-left transition ${
-                            selected
-                              ? "border-teal-300/30 bg-teal-300/[0.07]"
-                              : "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04]"
-                          } ${
-                            disabled
-                              ? "cursor-not-allowed opacity-45"
-                              : ""
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`inline-block size-2 rounded-full ${
-                                    selected
-                                      ? "bg-teal-300"
-                                      : "bg-slate-600"
-                                  }`}
-                                />
-
-                                <span className="text-[11px] font-semibold text-slate-200">
-                                  {
-                                    model.display_name
-                                  }
-                                </span>
-
-                                <span className="rounded-full border border-white/[0.06] px-1.5 py-0.5 text-[8px] font-bold tracking-[0.08em] text-slate-500">
-                                  {
-                                    model.modality
-                                  }
-                                </span>
-                              </div>
-
-                              <div className="mt-1 text-[9px] leading-4 text-slate-600">
-                                {
-                                  model.description
-                                }
-                              </div>
-                            </div>
-
-                            <span
-                              className={`rounded-full px-1.5 py-0.5 text-[8px] font-bold ${
-                                model.loaded
-                                  ? "border border-teal-300/10 bg-teal-300/[0.05] text-teal-200"
-                                  : "border border-amber-300/10 bg-amber-300/[0.04] text-amber-200"
-                              }`}
-                            >
-                              {model.loaded
-                                ? "READY"
-                                : "OFFLINE"}
-                            </span>
-                          </div>
-
-                          <div className="mt-2 text-[8px] text-slate-700">
-                            {
-                              targetDescription(
-                                target,
-                              )
-                            }
-                          </div>
-                        </button>
-                      );
-                    },
-                  )}
-                </div>
-
-                <div className="mt-2 rounded-lg border border-white/[0.05] bg-black/10 px-2.5 py-2 text-[8px] text-slate-600">
-                  <span className="text-slate-400">
-                    Selected:
-                  </span>{" "}
-                  {targetLabel(
-                    selectedTarget,
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <Dropzone
-                  files={files}
-                  onFilesChange={
-                    setFiles
-                  }
-                  disabled={working}
-                />
-              </div>
-
-              <div className="ra-actions mt-3">
-                <button
-                  type="button"
-                  disabled={
-                    working ||
-                    !files.length ||
-                    !selectedModel.loaded
-                  }
-                  onClick={() =>
-                    void analyze()
-                  }
-                  className="ra-btn ra-btn-primary disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {working ? (
-                    <LoaderCircle
-                      size={14}
-                      className="animate-spin"
-                    />
-                  ) : (
-                    <ScanLine
-                      size={14}
-                    />
-                  )}
-
-                  Analyze{" "}
-                  {
-                    selectedModel.display_name
-                  }
-                </button>
-
-                <button
-                  type="button"
-                  disabled={working}
-                  onClick={() =>
-                    void runDemo()
-                  }
-                  className="ra-btn disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Sparkles size={14} />
-                  Demo study
-                </button>
-              </div>
-
-              {!selectedModel.loaded &&
-                !working && (
-                  <div className="mt-3 rounded-xl border border-amber-300/10 bg-amber-300/[0.035] p-3 text-[9px] leading-4 text-amber-100">
-                    <strong>
-                      {
-                        selectedModel.display_name
-                      }{" "}
-                      model unavailable.
-                    </strong>{" "}
-                    You can still
-                    select this anatomy.
-                    Start the backend
-                    and load the
-                    corresponding model
-                    before running
-                    Analyze.
-                  </div>
-                )}
-
-              {working && (
-                <div
-                  className="ra-progress"
-                  aria-live="polite"
-                >
-                  <div className="ra-progress-row">
-                    <span>
-                      {stageMessage}
-                    </span>
-
-                    <span>
-                      {progress}%
-                    </span>
-                  </div>
-
-                  <div
-                    className="ra-progress-track"
-                    aria-hidden="true"
-                  >
-                    <div
-                      className="ra-progress-fill"
-                      style={{
-                        width: `${Math.max(
-                          4,
-                          progress,
-                        )}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="ra-sidebar-section">
-            <div className="ra-sidebar-title">
-              Recent studies
-            </div>
-
-            <div className="ra-history-list">
-              {history.length ===
-                0 && (
-                <div className="ra-sidebar-card p-4 text-center text-[10px] text-slate-600">
-                  No completed
-                  studies yet.
-                </div>
-              )}
-
-              {history.map(
-                (item) => (
-                  <button
-                    type="button"
-                    key={item.case_id}
-                    onClick={() =>
-                      void openHistory(
-                        item,
-                      )
-                    }
-                    className="ra-history-item"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="ra-history-id">
-                        {item.case_id.slice(
-                          0,
-                          14,
-                        )}
-                      </span>
-
-                      {item.is_demo && (
-                        <span className="rounded-full border border-amber-200/10 bg-amber-200/5 px-1.5 py-0.5 text-[8px] font-bold text-amber-100">
-                          DEMO
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="ra-history-meta">
-                      <span>
-                        {item.target.toUpperCase()}{" "}
-                        ·{" "}
-                        {item.modality}{" "}
-                        ·{" "}
-                        {
-                          item.source_type
-                        }
-                      </span>
-
-                      <span>
-                        {item.volume_cm3 ==
-                        null
-                          ? "—"
-                          : `${item.volume_cm3.toFixed(
-                              1,
-                            )} cm³`}
-                      </span>
-                    </div>
-
-                    <div className="mt-1 text-[8px] text-slate-700">
-                      {formatDate(
-                        item.stored_at,
-                      )}
-                    </div>
-                  </button>
-                ),
-              )}
-            </div>
-          </section>
-
-          <section className="ra-sidebar-section">
-            <div className="ra-sidebar-card p-3">
-              <div className="flex items-center gap-2 text-[10px] font-semibold text-slate-200">
-                <ShieldCheck
-                  size={13}
-                  className="text-teal-300"
-                />
-
-                Workflow guardrails
-              </div>
-
-              <div className="mt-2 space-y-1.5 text-[9px] leading-4 text-slate-600">
-                <div>
-                  • Source geometry
-                  retained for final
-                  metrics
-                </div>
-
-                <div>
-                  • Model-specific
-                  preprocessing is
-                  kept separate
-                </div>
-
-                <div>
-                  • Validation metrics
-                  are model-level
-                  references
-                </div>
-
-                <div>
-                  • MRI intensity is
-                  not treated as HU
-                </div>
-              </div>
-            </div>
-          </section>
-        </aside>
-
-        <main className="ra-main">
-          <div className="ra-main-inner">
-            <StageRail
-              active={stage}
-              result={result}
-            />
-
-            {error && (
-              <div
-                className="ra-error ra-enter"
-                role="alert"
-              >
-                <AlertTriangle
-                  size={16}
-                  className="mt-0.5 shrink-0"
-                />
-
-                <div>
-                  <div className="ra-error-title">
-                    Pipeline message
-                  </div>
-
-                  <div className="ra-error-copy">
-                    {error}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="ml-auto inline-grid size-7 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-white/5 hover:text-white"
-                  aria-label="Dismiss pipeline message"
-                  onClick={() =>
-                    setError(null)
-                  }
-                >
-                  <X size={13} />
-                </button>
-              </div>
-            )}
-
-            {!result ? (
-              <section className="ra-empty ra-enter ra-enter-2">
-                <div className="ra-empty-content">
-                  <div
-                    className="ra-empty-mark"
-                    aria-hidden="true"
-                  >
-                    <ScanLine
-                      size={32}
-                      strokeWidth={1.4}
-                    />
-                  </div>
-
-                  <div className="ra-eyebrow">
-                    Multimodel medical
-                    imaging
-                    workstation
-                  </div>
-
-                  <h1 className="ra-empty-title ra-heading">
-                    Analyze Spleen CT,
-                    Heart MRI, or
-                    Prostate MRI.
-                  </h1>
-
-                  <p className="ra-empty-copy">
-                    Select the
-                    anatomy-specific
-                    research model, import
-                    a NIfTI volume or DICOM
-                    study, run
-                    model-specific
-                    preprocessing and
-                    segmentation, inspect
-                    the synchronized MPR
-                    planes, review the
-                    extracted 3D surface,
-                    and inspect
-                    quantitative
-                    measurements and
-                    provenance in one
-                    focused environment.
-                  </p>
-
-                  <div className="ra-empty-pills">
-                    {[
-                      "NIfTI",
-                      "DICOM",
-                      "Spleen CT",
-                      "Heart MRI",
-                      "Prostate MRI",
-                      "MPR",
-                      "3D surface",
-                    ].map(
-                      (item) => (
-                        <span
-                          key={item}
-                          className="ra-pill"
-                        >
-                          {item}
-                        </span>
-                      ),
-                    )}
-                  </div>
-                </div>
-              </section>
-            ) : (
-              <section className="ra-case-grid ra-enter ra-enter-2">
-                <div className="ra-view-stack">
-                  <div className="ra-study-strip">
-                    <div className="ra-study-strip-left">
-                      <div
-                        className="ra-study-badge"
-                        aria-hidden="true"
-                      >
-                        <Database
-                          size={15}
-                        />
-                      </div>
-
-                      <div className="min-w-0">
-                        <div className="ra-study-strip-title">
-                          {selectedSummary}
-                        </div>
-
-                        <div className="ra-study-strip-meta">
-                          Case{" "}
-                          {
-                            result.request_id
-                          }{" "}
-                          · processed{" "}
-                          {result.processing_seconds.toFixed(
-                            2,
-                          )}{" "}
-                          s
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="ra-study-strip-actions">
-                      {result.is_demo && (
-                        <span className="rounded-full border border-amber-200/10 bg-amber-200/5 px-2.5 py-1 text-[8px] font-bold tracking-[0.08em] text-amber-100">
-                          SYNTHETIC DEMO
-                        </span>
-                      )}
-
-                      <button
-                        type="button"
-                        className="ra-icon-btn"
-                        onClick={() =>
-                          downloadJson(
-                            result,
-                          )
-                        }
-                        aria-label="Download JSON result"
-                        title="Download JSON result"
-                      >
-                        <Download
-                          size={14}
-                        />
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={
-                          result.persisted ===
-                          false
-                        }
-                        className="ra-icon-btn disabled:cursor-not-allowed disabled:opacity-30"
-                        onClick={() =>
-                          void downloadArtifact(
-                            caseMaskUrl(
-                              result.request_id,
-                            ),
-                            "segmentation_mask.nii.gz",
-                            setError,
-                          )
-                        }
-                        aria-label="Download segmentation mask"
-                        title="Download segmentation mask"
-                      >
-                        <FileDown
-                          size={14}
-                        />
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={
-                          result.persisted ===
-                          false
-                        }
-                        className="ra-icon-btn disabled:cursor-not-allowed disabled:opacity-30"
-                        onClick={() =>
-                          void downloadArtifact(
-                            caseBundleUrl(
-                              result.request_id,
-                            ),
-                            "radassist_case_bundle.zip",
-                            setError,
-                          )
-                        }
-                        aria-label="Download complete case bundle"
-                        title="Download complete case bundle"
-                      >
-                        <Download
-                          size={14}
-                        />
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={result.persisted === false}
-                        className="ra-icon-btn disabled:cursor-not-allowed disabled:opacity-30"
-                        onClick={() =>
-                          void downloadArtifact(
-                            caseReportUrl(result.request_id),
-                            "radassist_structured_report.json",
-                            setError,
-                          )
-                        }
-                        aria-label="Download structured report"
-                        title="Download structured report"
-                      >
-                        <FileDown size={14} />
-                      </button>
-
-                      <button
-                        type="button"
-                        className="ra-icon-btn danger"
-                        onClick={() =>
-                          void removeCurrent()
-                        }
-                        aria-label="Delete current case"
-                        title="Delete current case"
-                      >
-                        <Trash2
-                          size={14}
-                        />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div
-                    id="mpr"
-                    className="ra-workspace-card overflow-hidden p-0"
-                  >
-                    <ViewerErrorBoundary label="MPR">
-                      {result.is_demo ? (
-                        <DemoMPRViewer />
-                      ) : (
-                        <CornerstoneMPRViewer
-                          volumeUrl={`${API_BASE_URL}${result.preview.volume_url}`}
-                          caseId={
-                            result.request_id
-                          }
-                        />
-                      )}
-                    </ViewerErrorBoundary>
-                  </div>
-
-                  <div
-                    id="surface3d"
-                    className="ra-workspace-card overflow-hidden p-0"
-                  >
-                    <ViewerErrorBoundary label="3D">
-                      <Three3DMeshViewer
-                        mesh={result.mesh}
-                        labelMeshes={
-                          result.label_meshes
-                        }
-                        target={
-                          result.target
-                        }
-                      />
-                    </ViewerErrorBoundary>
-                  </div>
-                </div>
-
-                <aside
-                  id="metrics"
-                  className="ra-inspector"
-                  aria-label="Quantification and QA"
-                >
-                  <div
-                    id="qa"
-                    className="scroll-mt-32"
-                  />
-
-                  <div className="ra-inspector-card ra-enter ra-enter-3 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="ra-section-label">
-                          Quick readout
-                        </div>
-
-                        <div className="mt-1 text-[10px] text-slate-500">
-                          Source-derived
-                          measurements
-                        </div>
-                      </div>
-
-                      <Activity
-                        size={15}
-                        className="text-teal-300"
-                      />
-                    </div>
-
-                    <div className="mt-3 ra-metric-callout">
-                      <div>
-                        <div className="ra-section-label">
-                          Target volume
-                        </div>
-
-                        <div className="mt-2">
-                          <span className="ra-metric-value">
-                            {result.volume_cm3.toFixed(
-                              2,
-                            )}
-                          </span>
-
-                          <span className="ra-metric-unit">
-                            cm³
-                          </span>
-                        </div>
-
-                        <div className="ra-metric-caption">
-                          {result.voxel_count.toLocaleString()}{" "}
-                          segmented
-                          voxels
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <div className="ra-section-label">
-                          Target
-                        </div>
-
-                        <div className="mt-1 text-[11px] font-semibold text-slate-200">
-                          {result.target}
-                        </div>
-                      </div>
-                    </div>
-
-                    {result.label_metrics?.length >
-                      0 && (
-                      <div className="mt-3 space-y-2">
-                        <div className="ra-section-label">
-                          Structures
-                        </div>
-
-                        {result.label_metrics
-                          .filter(
-                            (metric) =>
-                              metric.name.toLowerCase() !==
-                              "background",
-                          )
-                          .map(
-                            (
-                              metric,
-                            ) => (
-                              <div
-                                key={
-                                  metric.label
-                                }
-                                className="rounded-lg border border-white/[0.05] bg-white/[0.02] p-2"
-                              >
-                                <div className="flex items-center justify-between gap-3">
-                                  <span className="text-[9px] font-medium text-slate-300">
-                                    {
-                                      metric.name
-                                    }
-                                  </span>
-
-                                  <span className="font-mono text-[9px] text-teal-200">
-                                    {
-                                      metric.volume_cm3
-                                    }{" "}
-                                    cm³
-                                  </span>
-                                </div>
-
-                                <div className="mt-1 text-[8px] text-slate-600">
-                                  {metric.voxel_count.toLocaleString()}{" "}
-                                  voxels ·{" "}
-                                  {metric.fraction_pct.toFixed(
-                                    2,
-                                  )}
-                                  %
-                                </div>
-                              </div>
-                            ),
-                          )}
-                      </div>
-                    )}
-
-                    {result.validation_benchmark
-                      .per_class &&
-                      Object.keys(
-                        result
-                          .validation_benchmark
-                          .per_class,
-                      ).length >
-                        0 && (
-                        <div className="mt-3 ra-benchmark">
-                          <div>
-                            <strong>
-                              Bundle validation
-                            </strong>
-
-                            <div className="mt-1">
-                              Reference
-                              metrics,
-                              not
-                              patient-specific
-                              accuracy
-                            </div>
-                          </div>
-
-                          <div className="space-y-1 text-right font-mono text-[8px]">
-                            {Object.entries(
-                              result
-                                .validation_benchmark
-                                .per_class,
-                            ).map(
-                              ([
-                                name,
-                                dice,
-                              ]) => (
-                                <div
-                                  key={
-                                    name
-                                  }
-                                >
-                                  {name}:{" "}
-                                  {dice.toFixed(
-                                    2,
-                                  )}
-                                </div>
-                              ),
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                    {!result.validation_benchmark
-                      .per_class ||
-                    Object.keys(
-                      result
-                        .validation_benchmark
-                        .per_class ??
-                        {},
-                    ).length ===
-                      0 ? (
-                      <div className="mt-2 ra-benchmark">
-                        <div>
-                          <strong>
-                            Validation Dice
-                          </strong>
-
-                          <div className="mt-1">
-                            Held-out
-                            model
-                            benchmark
-                          </div>
-                        </div>
-
-                        <strong className="font-mono">
-                          {result
-                            .validation_benchmark
-                            .validation_dice ==
-                          null
-                            ? "—"
-                            : result.validation_benchmark.validation_dice.toFixed(
-                                3,
-                              )}
-                        </strong>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="ra-enter ra-enter-4">
-                    <MetricsPanel
-                      result={result}
-                    />
-                  </div>
-                </aside>
-              </section>
-            )}
-
-            <footer className="ra-footer">
-              <div className="flex items-center gap-2">
-                <ShieldCheck size={12} />
-
-                <span>
-                  Research / engineering
-                  use only · not a
-                  diagnostic or treatment
-                  device.
-                </span>
-              </div>
-
-              <div className="flex items-center gap-4">
-                <span>
-                  <strong>
-                    RadAssist 3D
-                  </strong>{" "}
-                  v1.4
-                </span>
-
-                <div
-                  className="font-semibold"
-                  style={{
-                    color: "#FFD400",
-                  }}
-                >
-                  This is created by Ruthwik Goparaju
-                </div>
-
-                <span className="font-mono">
-                  API{" "}
-                  {API_BASE_URL}
-                </span>
-              </div>
-            </footer>
-          </div>
-        </main>
-      </div>
-    </div>
+        ) : null
+      }
+    />
   );
 }

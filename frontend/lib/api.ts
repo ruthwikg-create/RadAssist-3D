@@ -5,6 +5,12 @@ import type {
   ModelsResponse,
 } from "./types";
 
+const API_TOKEN = process.env.NEXT_PUBLIC_RADASSIST_API_TOKEN ?? "";
+
+function authHeaders(): Record<string, string> {
+  return API_TOKEN ? { Authorization: "Bearer " + API_TOKEN } : {};
+}
+
 export const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 ).replace(/\/$/, "");
@@ -22,6 +28,7 @@ export async function fetchHealth(): Promise<BackendHealth> {
     `${API_BASE_URL}/health`,
     {
       cache: "no-store",
+      headers: authHeaders(),
     },
   );
 
@@ -39,6 +46,7 @@ export async function fetchModels(): Promise<ModelsResponse> {
     `${API_BASE_URL}/api/v1/models`,
     {
       cache: "no-store",
+      headers: authHeaders(),
     },
   );
 
@@ -84,6 +92,10 @@ export function segmentFiles(
       );
 
       xhr.responseType = "json";
+
+      if (API_TOKEN) {
+        xhr.setRequestHeader("Authorization", "Bearer " + API_TOKEN);
+      }
 
       xhr.timeout =
         60 * 60 * 1000;
@@ -391,6 +403,7 @@ export async function getCase(
       `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseId)}`,
       {
         cache: "no-store",
+        headers: authHeaders(),
       },
     );
 
@@ -420,6 +433,7 @@ export async function listCases(): Promise<
       `${API_BASE_URL}/api/v1/cases`,
       {
         cache: "no-store",
+        headers: authHeaders(),
       },
     );
 
@@ -442,6 +456,7 @@ export async function deleteCase(
       `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseId)}`,
       {
         method: "DELETE",
+        headers: authHeaders(),
       },
     );
 
@@ -464,6 +479,22 @@ export function toPreviewUrl(
   return absoluteUrl(path);
 }
 
+export async function createAuthenticatedObjectUrl(path: string): Promise<string> {
+  const response = await fetch(absoluteUrl(path), {
+    cache: "no-store",
+    headers: authHeaders(),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(
+      body?.detail ?? `Protected artifact request failed (HTTP ${response.status}).`,
+    );
+  }
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
+
 export function caseMaskUrl(
   caseId: string,
 ) {
@@ -479,6 +510,14 @@ export function caseBundleUrl(
 export function caseReportUrl(caseId: string) {
   return `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseId)}/report`;
 }
+export function caseDicomSegUrl(caseId: string) {
+  return `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseId)}/dicom-seg`;
+}
+
+export function caseDicomSrUrl(caseId: string) {
+  return `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseId)}/dicom-sr`;
+}
+
 
 export async function downloadApiFile(
   path: string,
@@ -489,6 +528,7 @@ export async function downloadApiFile(
       absoluteUrl(path),
       {
         cache: "no-store",
+        headers: authHeaders(),
       },
     );
 

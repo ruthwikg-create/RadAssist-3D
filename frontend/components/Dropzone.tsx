@@ -32,10 +32,12 @@ export default function Dropzone({
   files,
   onFilesChange,
   disabled,
+  modalityLabel = "medical imaging",
 }: {
   files: File[];
   onFilesChange: (files: File[]) => void;
   disabled?: boolean;
+  modalityLabel?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -112,6 +114,7 @@ export default function Dropzone({
         <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-teal-300/30 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
         <input
           ref={inputRef}
+          id="radassist-import-input"
           type="file"
           hidden
           multiple
@@ -138,7 +141,7 @@ export default function Dropzone({
           <div className="mx-auto grid size-10 place-items-center rounded-xl border border-teal-300/15 bg-teal-300/[0.07] text-teal-200 transition duration-200 group-hover:-translate-y-0.5 group-hover:border-teal-200/25">
             <UploadCloud size={19} strokeWidth={1.7} />
           </div>
-          <div className="mt-3 font-heading text-[11px] font-semibold text-slate-100">Drop a CT study</div>
+          <div className="mt-3 font-heading text-[11px] font-semibold text-slate-100">Drop a {modalityLabel} study</div>
           <div className="mx-auto mt-1 max-w-[220px] text-[9px] leading-4 text-slate-500">
             NIfTI, DICOM folder, ZIP series, or extensionless instances
           </div>
