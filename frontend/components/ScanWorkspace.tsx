@@ -32,6 +32,7 @@ import AdvancedAnalyticsPanel from "./AdvancedAnalyticsPanel";
 import CaseComparisonPanel from "./CaseComparisonPanel";
 import ResearchAnalyticsPanel from "./ResearchAnalyticsPanel";
 import ClinicalResearchConsole from "./ClinicalResearchConsole";
+import ModelCatalog from "./ModelCatalog";
 import ViewerErrorBoundary from "./ViewerErrorBoundary";
 
 import type {
@@ -876,18 +877,29 @@ export default function ScanWorkspace() {
       onSettings={() => setShowSettings((value: boolean) => !value)}
       importContent={
         <div className="cw-import-stack">
-          <div className="cw-import-targets">
-            {TARGET_ORDER.map((target) => (
-              <button key={target} type="button" className={`cw-target ${selectedTarget === target ? "active" : ""}`} onClick={() => handleTargetChange(target)} disabled={working}>
-                {targetLabel(target)}
-              </button>
-            ))}
+          <ModelCatalog
+            selectedTarget={selectedTarget}
+            models={backend?.models ?? {}}
+            working={working}
+            onSelect={handleTargetChange}
+          />
+          <div className="cw-upload-contract">
+            <div>
+              <span className="cw-upload-contract-label">SELECTED ANALYSIS</span>
+              <b>{targetLabel(selectedTarget)}</b>
+              <small>{targetDescription(selectedTarget)}</small>
+            </div>
+            <div>
+              <span className="cw-upload-contract-label">EXPECTED DATA</span>
+              <b>{selectedTarget === "brain_tumor" ? "MR ×4" : selectedModel.modality}</b>
+              <small>{selectedTarget === "brain_tumor" ? "T1c · T1 · T2 · FLAIR, aligned" : "DICOM series or NIfTI volume"}</small>
+            </div>
           </div>
           <Dropzone
             files={files}
             onFilesChange={setFiles}
             disabled={working}
-            modalityLabel={selectedModel.modality === "MR" ? "MR" : "CT"}
+            modalityLabel={selectedTarget === "brain_tumor" ? "MR ×4" : selectedModel.modality === "MR" ? "MR" : "CT"}
           />
           <div className="cw-import-actions">
             <button type="button" className="cw-primary" disabled={working || !files.length || !selectedModel.loaded} onClick={() => void analyze()}>
