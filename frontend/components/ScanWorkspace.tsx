@@ -34,6 +34,7 @@ import type {
   CaseSummary,
   ModelInfo,
 } from "../lib/types";
+import { MODALITY_REGISTRY, SEGMENTATION_PROTOCOLS, type ImagingModality } from "../lib/modalityRegistry";
 
 import {
   API_BASE_URL,
@@ -318,6 +319,9 @@ export default function ScanWorkspace() {
   const [selectedTarget, setSelectedTarget] =
     useState<Target>("spleen");
 
+  const [selectedModality, setSelectedModality] =
+    useState<ImagingModality>("CT");
+
   const [stage, setStage] =
     useState<Stage>("ingest");
 
@@ -432,6 +436,9 @@ export default function ScanWorkspace() {
       target,
     );
 
+    const protocol = SEGMENTATION_PROTOCOLS[target];
+    setSelectedModality(protocol.modalities[0]);
+
     setError(null);
 
     setResult(null);
@@ -465,6 +472,7 @@ export default function ScanWorkspace() {
         await segmentFiles(
           selectedTarget,
           files,
+          selectedModality,
           (value: number) => {
             if (value >= 100) {
               setProgress(99);
@@ -634,6 +642,9 @@ export default function ScanWorkspace() {
         setSelectedTarget(
           body.target,
         );
+
+        const protocol = SEGMENTATION_PROTOCOLS[body.target];
+        setSelectedModality(protocol.modalities[0]);
       }
 
       setStage("render");
@@ -923,6 +934,32 @@ export default function ScanWorkspace() {
               </div>
 
               <div className="mt-4">
+                <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Imaging protocol
+                </div>
+
+                <div className="mb-3 rounded-xl border border-white/[0.06] bg-black/10 p-2.5">
+                  <label htmlFor="radassist-modality" className="mb-1.5 block text-[8px] font-bold uppercase tracking-[0.12em] text-slate-600">
+                    Modality
+                  </label>
+                  <select
+                    id="radassist-modality"
+                    value={selectedModality}
+                    disabled={working}
+                    onChange={(event) => setSelectedModality(event.target.value as ImagingModality)}
+                    className="w-full rounded-lg border border-white/[0.07] bg-[#0a1117] px-2.5 py-2 text-[10px] font-semibold text-slate-200 outline-none transition focus:border-teal-300/30"
+                  >
+                    {MODALITY_REGISTRY.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label} · {item.status === "available" ? "analysis enabled" : "viewer / integration"}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="mt-1.5 text-[8px] leading-4 text-slate-600">
+                    Segmentation is enabled only where a documented model protocol exists.
+                  </div>
+                </div>
+
                 <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   Segmentation model
                 </div>
