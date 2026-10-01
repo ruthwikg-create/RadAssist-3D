@@ -482,6 +482,27 @@ class MultiModelInferenceEngine:
 
         return mask
 
+    @staticmethod
+    def _heart_slice_qa(mask: sitk.Image) -> dict[str, Any]:
+        array = sitk.GetArrayFromImage(mask)
+        if array.ndim != 3:
+            return {"status": "FAIL", "slice_count": 0, "foreground_slices": 0}
+        slice_count = int(array.shape[0])
+        foreground_slices = int(np.count_nonzero(np.any(array > 0, axis=(1, 2))))
+        coverage = {}
+        for label in (1, 2, 3):
+            present = np.any(array == label, axis=(1, 2))
+            coverage[str(label)] = round(100.0 * int(present.sum()) / slice_count, 2) if slice_count else 0.0
+        status = "PASS" if 0 < foreground_slices < slice_count else "REVIEW"
+        return {
+            "status": status,
+            "slice_count": slice_count,
+            "foreground_slices": foreground_slices,
+            "foreground_slice_fraction_pct": round(100.0 * foreground_slices / slice_count, 2) if slice_count else 0.0,
+            "label_slice_coverage_pct": coverage,
+            "note": "Structural sanity check only; not an accuracy metric.",
+        }
+
     def _prostate_predict(
         self,
         image: sitk.Image,
@@ -625,6 +646,8 @@ class MultiModelInferenceEngine:
                 TARGETS[target]["labels"],
             )
         )
+
+        heart_slice_qa = self._heart_slice_qa(mask) if target == "heart" else None
 
         # Per-label connected-component QA. This is review metadata only;
         # it does not modify the original segmentation mask.
@@ -957,6 +980,8 @@ class MultiModelInferenceEngine:
                 **label_component_qa,
                 "cleanup": component_cleanup,
             },
+
+            "heart_slice_qa": heart_slice_qa,
 
             "mesh": mesh,
 
