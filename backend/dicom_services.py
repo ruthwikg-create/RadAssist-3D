@@ -141,7 +141,7 @@ def _replacement_uid(original: str, salt: str) -> str:
     return "2.25." + str(int(digest[:30], 16))
 
 
-def anonymize_dataset(ds: Dataset, salt: str, retain_uids: bool = False) -> Dataset:
+def anonymize_dataset(ds: Dataset, salt: str, retain_uids: bool = False, known_uids: set[str] | None = None) -> Dataset:
     ds = ds.copy()
     ds.remove_private_tags()
 
@@ -160,13 +160,22 @@ def anonymize_dataset(ds: Dataset, salt: str, retain_uids: bool = False) -> Data
             except Exception:
                 pass
 
+    source_uids = set(known_uids or ())
     if not retain_uids:
         for name in UID_TAG_NAMES:
             value = getattr(ds, name, None)
             if value:
-                setattr(ds, name, _replacement_uid(str(value), salt))
+                source_uids.add(str(value))
+        uid_map = {value: _replacement_uid(value, salt) for value in source_uids}
+        for element in ds.iterall():
+            if element.VR != "UI":
+                continue
+            value = str(element.value)
+            if value in uid_map:
+                element.value = uid_map[value]
 
     ds.PatientIdentityRemoved = "YES"
+    ds.LongitudinalTemporalInformationModified = "REMOVED"
     ds.DeidentificationMethod = (
         "RadAssist 3D research de-identification: "
         "Basic confidentiality-style attribute removal; "
@@ -193,11 +202,21 @@ def anonymize_directory(source: Path, destination: Path, salt: str) -> dict[str,
     destination.mkdir(parents=True, exist_ok=True)
     mapping: dict[str, str] = {}
     output_files: list[str] = []
+    source_datasets = [
+        pydicom.dcmread(str(path), stop_before_pixels=True, force=False)
+        for path in files
+    ]
+    all_uids = {
+        str(getattr(ds, name))
+        for ds in source_datasets
+        for name in UID_TAG_NAMES
+        if getattr(ds, name, None)
+    }
 
     for source_file in files:
         ds = pydicom.dcmread(str(source_file), force=False)
         original_sop = str(getattr(ds, "SOPInstanceUID", source_file.name))
-        anon = anonymize_dataset(ds, salt=salt, retain_uids=False)
+        anon = anonymize_dataset(ds, salt=salt, retain_uids=False, known_uids=all_uids)
         out = destination / (source_file.stem + ".dcm")
         anon.save_as(str(out), write_like_original=False)
         output_files.append(str(out))
