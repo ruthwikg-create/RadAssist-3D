@@ -150,6 +150,7 @@ export default function ClinicalResearchConsole({
     ["Mesh Quality Assurance", quality?.mesh_volume_cm3 == null ? "REVIEW" : "PASS"],
     ["Provenance Traceability", result?.provenance_record ? "PASS" : "—"],
     ["DICOM SEG / SR Export", result?.dicom_export?.status ?? "NOT_AVAILABLE"],
+    ["Model Domain Compatibility", result?.model_compatibility?.status ?? "NOT_CHECKED"],
   ];
 
   const percentileValues = result
