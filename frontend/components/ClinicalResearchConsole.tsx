@@ -288,7 +288,7 @@ export default function ClinicalResearchConsole({
               </Card>
               <Card>
                 <CardTitle icon={<Microscope size={16} />} title="AI & Processing" meta="RUNTIME" />
-                <div className="cw-dashboard-value">{loaded}/3 models ready</div>
+                <div className="cw-dashboard-value">{loaded}/{Object.keys(result ? (backend?.models ?? {}) : (backend?.models ?? {})).length || 4} models ready</div>
                 <div className="cw-dashboard-meta">{result ? `Device: ${device.toUpperCase()} · Processing: ${result.processing_seconds.toFixed(2)} s` : `Device: ${device.toUpperCase()} · Awaiting study`}</div>
                 <div className="cw-dashboard-actions">
                   <button type="button" onClick={() => goToSection("metrics")}>Quantification</button>
@@ -592,7 +592,7 @@ export default function ClinicalResearchConsole({
       </main>
 
       <footer className="cw-footer">
-        <div><b className="good">● WORKSPACE READY</b><span>CPU / {device.toUpperCase()}</span><span>AI MODELS {loaded}/3</span><span>MODEL: {model?.name ?? "—"}</span></div>
+        <div><b className="good">● WORKSPACE READY</b><span>CPU / {device.toUpperCase()}</span><span>AI MODELS {loaded}/{Object.keys(backend?.models ?? {}).length || 4}</span><span>MODEL: {model?.name ?? "—"}</span></div>
         <div><span className="cyan">MPR</span><span>3D</span><span>Volume: {dimensions}</span><span>({spacing}mm)</span></div>
         <div><span>DICOM 3.0 / NIfTI-1</span><span>Coordinate Space: LPS</span><b>Research Use Only</b></div>
       </footer>
