@@ -277,7 +277,7 @@ def create_segmentation(
                 segment_number=int(segment_number),
                 segment_label=label_names[label_value],
                 segmented_property_category=codes.SCT.AnatomicalStructure,
-                segmented_property_type=_segment_code(label_names[number]),
+                segmented_property_type=_segment_code(label_names[label_value]),
                 algorithm_type=hd.seg.SegmentAlgorithmTypeValues.AUTOMATIC,
                 algorithm_identification=algorithm,
                 tracking_uid=hd.UID(),
