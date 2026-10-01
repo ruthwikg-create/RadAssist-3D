@@ -900,6 +900,7 @@ export default function ScanWorkspace() {
                 target={result.target}
                 voxelCount={result.voxel_count}
                 onImport={openImportPicker}
+                onRetry={files.length && selectedTarget === result.target ? () => void analyze() : undefined}
               />
             </ViewerErrorBoundary>
             <div className="cw-viewer-metrics">
