@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pydicom
 import highdicom as hd
+from pydicom.dataset import Dataset
 from pydicom.data import get_testdata_file
 
 from backend.dicom_services import (
@@ -34,6 +35,20 @@ def test_anonymization_removes_identifiers_and_replaces_uids():
     assert str(anon.SeriesInstanceUID) != original_series
     assert str(anon.SOPInstanceUID) != original_sop
     assert len(str(anon.StudyInstanceUID)) <= 64
+    assert getattr(anon, "LongitudinalTemporalInformationModified", None) == "REMOVED"
+
+
+def test_anonymization_updates_nested_uid_references():
+    ds = _ct_dataset()
+    ref = Dataset()
+    ref.ReferencedSOPInstanceUID = str(ds.SOPInstanceUID)
+    ds.ReferencedImageSequence = [ref]
+    original = str(ds.SOPInstanceUID)
+
+    anon = anonymize_dataset(ds, salt="nested-reference-test")
+
+    assert str(anon.SOPInstanceUID) != original
+    assert str(anon.ReferencedImageSequence[0].ReferencedSOPInstanceUID) == str(anon.SOPInstanceUID)
 
 
 def test_dicom_seg_round_trip(tmp_path):
