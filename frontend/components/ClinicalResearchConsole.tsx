@@ -368,6 +368,32 @@ export default function ClinicalResearchConsole({
                   </div>
                 </Card>
                 <Card>
+                  <CardTitle icon={<ShieldCheck size={16} />} title="MODEL / INPUT COMPATIBILITY" meta={result!.model_compatibility?.status ?? "REVIEW"} />
+                  <div className="cw-compatibility">
+                    <div><span>Model domain</span><b>{result!.model_compatibility?.model_domain ?? "Selected research model"}</b></div>
+                    <div><span>Expected data</span><b>{result!.model_compatibility?.expected_plane ?? (result!.modality + " volume")}</b></div>
+                    {(result!.model_compatibility?.warnings ?? []).slice(0, 3).map((warning) => (
+                      <div key={warning} className="warn"><span>Review</span><b>{warning}</b></div>
+                    ))}
+                  </div>
+                </Card>
+                {result!.target === "brain_tumor" ? (
+                  <Card>
+                    <CardTitle icon={<Activity size={16} />} title="LESION / TUMOR SEGMENTATION" meta="RESEARCH FINDINGS" />
+                    <div className="cw-tumor-findings">
+                      {labels.filter((item) => /tumor|enhancing/i.test(item.name)).map((item) => (
+                        <div key={item.label}>
+                          <span>{item.name}</span>
+                          <b>{n(item.volume_cm3, 2)} cm³</b>
+                          <small>{item.voxel_count.toLocaleString()} voxels · {item.fraction_pct.toFixed(2)}%</small>
+                        </div>
+                      ))}
+                    </div>
+                    <small className="cw-lut-note">These are segmentation-derived regions from the selected research model, not an independent diagnosis or confirmation of malignancy.</small>
+                  </Card>
+                ) : null}
+
+                <Card>
                   <CardTitle icon={<ShieldCheck size={16} />} title="AI QUALITY GATE" meta={quality?.status ?? "REVIEW"} />
                   <div className="cw-inspector-qa">
                     <div><span>Connected components</span><b>{quality?.connected_components ?? "—"}</b></div>
