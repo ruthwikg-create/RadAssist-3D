@@ -266,26 +266,34 @@ export default function CornerstoneMPRViewer({
         await volume.load();
         if (disposed) return;
 
-        await setVolumesForViewports(renderingEngine, [{ volumeId }], viewportIds, true);
-
-        // Establish a useful starting VOI from the actual source volume so
-        // native MRI/CT intensities are visible without relying on a fixed
-        // HU-like default range. The calculation samples the loaded scalar
-        // buffer to keep startup cost bounded for large studies.
+        // Establish a useful starting VOI from the actual loaded scalar data.
+        // Cornerstone 5.x keeps volume pixels behind the VoxelManager/volume
+        // API rather than exposing a generic scalarData property on IImageVolume.
         let initialLevel = level;
         let initialWidth = width;
         try {
-          const scalarData = (volume as CSTypes.IImageVolume & { scalarData?: ArrayLike<number> }).scalarData;
+          const volumeApi = volume as unknown as {
+            getScalarData?: () => ArrayLike<number>;
+            voxelManager?: {
+              getScalarData?: (storeScalarData?: boolean) => ArrayLike<number>;
+              getCompleteScalarDataArray?: () => ArrayLike<number>;
+            };
+          };
+          const scalarData =
+            volumeApi.voxelManager?.getScalarData?.(false)
+            ?? volumeApi.getScalarData?.()
+            ?? volumeApi.voxelManager?.getCompleteScalarDataArray?.();
+
           if (scalarData && scalarData.length) {
-            const sampleCount = Math.min(120000, scalarData.length);
+            const sampleCount = Math.min(160000, scalarData.length);
             const stride = Math.max(1, Math.floor(scalarData.length / sampleCount));
             const sample: number[] = [];
             for (let index = 0; index < scalarData.length && sample.length < sampleCount; index += stride) {
               const value = Number(scalarData[index]);
               if (Number.isFinite(value)) sample.push(value);
             }
-            sample.sort((a, b) => a - b);
             if (sample.length >= 8) {
+              sample.sort((a, b) => a - b);
               const q05 = sample[Math.floor((sample.length - 1) * 0.05)];
               const q95 = sample[Math.floor((sample.length - 1) * 0.95)];
               const span = Math.max(1, q95 - q05);
@@ -297,9 +305,36 @@ export default function CornerstoneMPRViewer({
             }
           }
         } catch {
-          // Keep the safe UI defaults if the scalar buffer is unavailable.
+          // Keep safe defaults if the volume does not expose scalar sampling.
         }
+
         if (disposed) return;
+
+        // Set the renderer's transfer-function range directly as well as the
+        // viewport VOI. This is the robust path documented by Cornerstone for
+        // volume viewports and avoids a blank/flat-looking canvas when a custom
+        // VOI range is applied before the actor is fully configured.
+        const lower = initialLevel - Math.max(1, initialWidth) / 2;
+        const upper = initialLevel + Math.max(1, initialWidth) / 2;
+
+        await setVolumesForViewports(
+          renderingEngine,
+          [{
+            volumeId,
+            callback: ({ volumeActor }) => {
+              try {
+                volumeActor
+                  .getProperty()
+                  .getRGBTransferFunction(0)
+                  .setMappingRange(lower, upper);
+              } catch {
+                // Preserve rendering even if the actor implementation differs.
+              }
+            },
+          }],
+          viewportIds,
+          true,
+        );
 
         // Recompute the camera independently for every orientation. Without an
         // orientation-aware reset, anisotropic NIfTI volumes can inherit a
