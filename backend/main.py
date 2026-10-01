@@ -42,6 +42,7 @@ try:
         RadAssistInferenceEngine,
         create_demo_case,
     )
+    from .brain_tumor_model_adapter import BrainTumorBraTSAdapter
     from .heart_model_adapter import CardiacVentricularAdapter
     from .prostate_model_adapter import ProstateMRIAdapter
     from .multimodel_engine import MultiModelInferenceEngine
@@ -65,6 +66,7 @@ except ImportError:
         RadAssistInferenceEngine,
         create_demo_case,
     )
+    from brain_tumor_model_adapter import BrainTumorBraTSAdapter
     from heart_model_adapter import CardiacVentricularAdapter
     from prostate_model_adapter import ProstateMRIAdapter
     from multimodel_engine import MultiModelInferenceEngine
@@ -86,6 +88,12 @@ logger = logging.getLogger("radassist.api")
 # ---------------------------------------------------------------------------
 
 SUPPORTED_TARGETS = {
+    "brain_tumor": {
+        "display_name": "Brain Tumor",
+        "modality": "MR",
+        "description": "BraTS multimodal brain tumor subregion segmentation",
+        "labels": {"0": "background", "1": "tumor core", "2": "whole tumor", "4": "enhancing tumor"},
+    },
     "spleen": {
         "display_name": "Spleen",
         "modality": "CT",
@@ -173,6 +181,7 @@ async def lifespan(app: FastAPI):
     # -------------------------
     heart_model = None
     prostate_model = None
+    brain_tumor_model = None
 
     try:
         heart_model = (
@@ -210,39 +219,42 @@ async def lifespan(app: FastAPI):
             "Prostate model initialization failed."
         )
 
-    # Create MRI dispatcher only when both adapters are available.
-    if (
-        heart_model is not None
-        and prostate_model is not None
-    ):
+    try:
+        brain_tumor_model = BrainTumorBraTSAdapter()
+        errors["brain_tumor"] = None
+        logger.info("Brain tumor model loaded successfully.")
+    except Exception as exc:
+        errors["brain_tumor"] = str(exc)
+        logger.warning("Brain tumor checkpoint unavailable: %s", exc)
+
+    # Create the MRI dispatcher from all available research adapters.
+    available_mri_models = {
+        "heart": heart_model,
+        "prostate": prostate_model,
+        "brain_tumor": brain_tumor_model,
+    }
+    available_mri_models = {
+        key: value
+        for key, value in available_mri_models.items()
+        if value is not None
+    }
+
+    if available_mri_models:
         try:
-            app.state.mri_engine = (
-                MultiModelInferenceEngine(
-                    heart_model,
-                    prostate_model,
-                )
+            app.state.mri_engine = MultiModelInferenceEngine(
+                heart_model=heart_model,
+                prostate_model=prostate_model,
+                brain_tumor_model=brain_tumor_model,
             )
-
-            engines["heart"] = heart_model
-            engines["prostate"] = prostate_model
-
+            engines.update(available_mri_models)
             logger.info(
-                "Heart + Prostate multimodel engine ready."
+                "MRI multimodel engine ready: %s",
+                ", ".join(sorted(available_mri_models)),
             )
-
         except Exception as exc:
             app.state.mri_engine = None
-
-            errors["heart"] = (
-                errors.get("heart")
-                or str(exc)
-            )
-
-            errors["prostate"] = (
-                errors.get("prostate")
-                or str(exc)
-            )
-
+            for name in available_mri_models:
+                errors[name] = errors.get(name) or str(exc)
             logger.exception(
                 "MRI multimodel dispatcher initialization failed."
             )
@@ -1135,6 +1147,14 @@ async def segment(
                 detail=(
                     "The Spleen model is unavailable."
                 ),
+            )
+
+    elif target == "brain_tumor":
+        engine = getattr(request.app.state, "mri_engine", None)
+        if engine is None or target not in engines:
+            raise HTTPException(
+                status_code=503,
+                detail="The Brain Tumor model is unavailable.",
             )
 
     else:
