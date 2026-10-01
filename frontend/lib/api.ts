@@ -54,6 +54,7 @@ export async function fetchModels(): Promise<ModelsResponse> {
 export function segmentFiles(
   target: string,
   files: File[],
+  modality = "AUTO",
   onProgress?: (progress: number) => void,
 ): Promise<CaseResult> {
   return new Promise(
@@ -63,6 +64,11 @@ export function segmentFiles(
       form.append(
         "target",
         target,
+      );
+
+      form.append(
+        "modality",
+        modality,
       );
 
       files.forEach(
