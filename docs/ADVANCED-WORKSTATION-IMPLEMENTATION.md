@@ -28,7 +28,7 @@ The registry supports explicit checkpoint slots for:
 - liver focal-lesion models;
 - prostate MRI lesion models.
 
-A lesion model is considered available only when its checkpoint is explicitly configured and its modality/anatomy contract is satisfied. The intended result contract includes candidate mask/localization, 3D representation, volume/diameter where supported, uncertainty/confidence metadata, review status and model provenance.
+A lesion model is considered available only when its checkpoint is explicitly configured and its modality/anatomy contract is satisfied. The repository now includes an optional BraTS adapter for brain MRI tumor subregion segmentation; it requires four aligned NIfTI channels (T1c, T1, T2, FLAIR) and a separately supplied checkpoint. The intended result contract includes candidate mask/localization, 3D representation, volume/diameter where supported, uncertainty/confidence metadata, review status and model provenance.
 
 For brain tumor work, a suitable external research model is the MONAI BraTS MRI segmentation bundle, which expects four MRI channels (T1c, T1, T2 and FLAIR) and produces tumor-core, whole-tumor and enhancing-tumor outputs. The MONAI model metadata explicitly describes it as an example and not for diagnostic use. RadAssist therefore requires the bundle/checkpoint to be installed and configured before exposing an actual finding.
 
