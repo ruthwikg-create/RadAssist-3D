@@ -1056,7 +1056,7 @@ async def segment(
             status_code=400,
             detail=(
                 "Unsupported model target. "
-                "Choose spleen, heart, or prostate."
+                "Choose spleen, heart, prostate, or brain_tumor."
             ),
         )
 
@@ -1106,13 +1106,15 @@ async def segment(
 
     if len(files) > 1 and (
         has_nifti or has_zip
-    ):
+    ) and target != "brain_tumor":
         raise HTTPException(
             status_code=400,
             detail=(
                 "Upload exactly one NIfTI volume "
                 "or one DICOM ZIP. Multiple files "
-                "are reserved for a DICOM series."
+                "are reserved for a DICOM series, "
+                "except brain_tumor which requires four "
+                "aligned NIfTI channels: T1c, T1, T2, FLAIR."
             ),
         )
 
