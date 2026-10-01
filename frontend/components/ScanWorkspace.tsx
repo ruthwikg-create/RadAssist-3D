@@ -898,6 +898,8 @@ export default function ScanWorkspace() {
                 labelMeshes={result.label_meshes}
                 meshDiagnostics={result.mesh_diagnostics}
                 target={result.target}
+                voxelCount={result.voxel_count}
+                onImport={openImportPicker}
               />
             </ViewerErrorBoundary>
             <div className="cw-viewer-metrics">
