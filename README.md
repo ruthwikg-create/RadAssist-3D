@@ -96,6 +96,7 @@ Current anatomy-specific research models include:
 | Spleen | CT | Organ segmentation |
 | Heart | MRI | Ventricular / myocardial segmentation |
 | Prostate | MRI | Zonal segmentation |
+| Brain tumor | MRI | BraTS tumor subregion segmentation (optional checkpoint) |
 
 The system keeps **model benchmark performance separate from patient-specific accuracy**.
 
@@ -136,7 +137,7 @@ A dedicated whole-heart multi-structure model target is represented separately f
 
 ### Tumor and lesion research layer
 
-RadAssist also contains an explicit pathology-model registry for optional lesion workflows. The registry can expose anatomy-specific model slots for brain MRI tumor segmentation, lung CT nodule detection, liver focal lesions and prostate MRI lesions.
+RadAssist also contains an explicit pathology-model registry for optional lesion workflows. The registry can expose anatomy-specific model slots for brain MRI tumor segmentation, lung CT nodule detection, liver focal lesions and prostate MRI lesions. The repository now includes an optional BraTS brain-tumor adapter; the checkpoint is deliberately external/configured rather than committed to Git.
 
 The important design rule is:
 
