@@ -47,6 +47,7 @@ try:
     from .multimodel_engine import MultiModelInferenceEngine
     from .engineering import append_audit_event, build_input_manifest, build_provenance, validate_input_contract, write_report_bundle
     from .dicom_export import export_dicom_seg_and_sr
+    from .lesion_registry import get_lesion_capabilities
 except ImportError:
     from case_store import (
         case_dir,
@@ -69,6 +70,7 @@ except ImportError:
     from multimodel_engine import MultiModelInferenceEngine
     from engineering import append_audit_event, build_input_manifest, build_provenance, validate_input_contract, write_report_bundle
     from dicom_export import export_dicom_seg_and_sr
+    from lesion_registry import get_lesion_capabilities
 
 
 logging.basicConfig(
@@ -514,6 +516,8 @@ class SegmentResponse(BaseModel):
 
     model_provenance: ModelProvenance
 
+    model_compatibility: dict[str, Any] | None = None
+
     label_metrics: list[LabelMetric] = Field(
         default_factory=list
     )
@@ -758,6 +762,12 @@ async def models(
 # ---------------------------------------------------------------------------
 # Case history
 # ---------------------------------------------------------------------------
+
+@app.get("/api/v1/lesion-capabilities")
+async def lesion_capabilities() -> dict[str, Any]:
+    """Expose optional pathology-model slots without claiming a lesion finding."""
+    return {"models": get_lesion_capabilities()}
+
 
 @app.get(
     "/api/v1/cases",

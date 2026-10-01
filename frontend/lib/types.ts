@@ -136,6 +136,17 @@ export type CaseResult = {
 
   model_provenance?: ModelProvenance;
 
+  model_compatibility?: {
+    status: string;
+    model_domain?: string;
+    expected_plane?: string;
+    expected_inference_roi?: number[];
+    source_type?: string;
+    dimensions?: number[];
+    spacing_mm?: number[];
+    warnings?: string[];
+  };
+
   mesh: MeshData;
 
   original_spacing_mm: number[];
