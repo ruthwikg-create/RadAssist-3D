@@ -26,6 +26,7 @@ type Props = {
   target?: CaseResult["target"];
   voxelCount?: number;
   onImport?: () => void;
+  onRetry?: () => void;
 };
 
 type Surface = {
@@ -190,6 +191,7 @@ export default function ThreeDMeshViewer({
   target,
   voxelCount,
   onImport,
+  onRetry,
 }: Props) {
   const containerRef =
     useRef<HTMLDivElement | null>(null);
@@ -1003,14 +1005,27 @@ export default function ThreeDMeshViewer({
                 {diagnosticText ? (
                   <div className="mt-2 break-words text-left text-[9px] text-red-200/60">{diagnosticText}</div>
                 ) : null}
-                {voxelCount === 0 && onImport ? (
-                  <button
-                    type="button"
-                    onClick={onImport}
-                    className="mt-3 rounded border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-[9px] font-semibold text-cyan-200"
-                  >
-                    Import &amp; Re-analyze
-                  </button>
+                {voxelCount === 0 ? (
+                  <div className="mt-3 flex flex-wrap justify-center gap-2">
+                    {onRetry ? (
+                      <button
+                        type="button"
+                        onClick={onRetry}
+                        className="rounded border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-[9px] font-semibold text-cyan-200"
+                      >
+                        Retry Current Study
+                      </button>
+                    ) : null}
+                    {onImport ? (
+                      <button
+                        type="button"
+                        onClick={onImport}
+                        className="rounded border border-white/10 bg-white/[0.03] px-3 py-2 text-[9px] font-semibold text-slate-200"
+                      >
+                        Import &amp; Re-analyze
+                      </button>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
             </div>
