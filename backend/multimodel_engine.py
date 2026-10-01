@@ -896,7 +896,7 @@ class MultiModelInferenceEngine:
                 "preprocessing": raw_provenance["preprocessing"],
                 "labels": {str(k): v for k, v in TARGETS[target]["labels"].items()},
             }
-        if target == "heart":
+        elif target == "heart":
             validation_per_class: dict[
                 str, float
             ] = {}
