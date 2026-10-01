@@ -351,9 +351,11 @@ def create_structured_report(
             continue
         unit = item.get("unit")
         if unit == "cm3":
-            unit_code = codes.UCUM.CubicCentimeter
+            unit_code = codes.UCUM.CubicMillimeter
+            value = float(value) * 1000.0
         elif unit == "cm2":
-            unit_code = codes.UCUM.SquareCentimeter
+            unit_code = codes.UCUM.SquareMillimeter
+            value = float(value) * 100.0
         elif unit == "mm":
             unit_code = codes.UCUM.Millimeter
         else:
