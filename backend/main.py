@@ -1274,6 +1274,71 @@ async def segment(
         ) from exc
 
 
+@app.get("/api/v1/dicomweb/status")
+async def dicomweb_status() -> dict[str, Any]:
+    client = DicomWebClient()
+    return {
+        "configured": client.configured,
+        "base_url_configured": client.configured,
+        "token_configured": bool(client.token),
+        "warning": None if client.configured else "Set RADASSIST_DICOMWEB_URL to connect to a PACS/DICOMweb server.",
+    }
+
+
+@app.get("/api/v1/dicomweb/studies")
+async def dicomweb_studies(
+    study_instance_uid: str | None = None,
+    patient_id: str | None = None,
+) -> Any:
+    client = DicomWebClient()
+    try:
+        query = {}
+        if study_instance_uid:
+            query["StudyInstanceUID"] = study_instance_uid
+        if patient_id:
+            query["PatientID"] = patient_id
+        return client.qido_studies(query)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"DICOMweb QIDO request failed: {exc}") from exc
+
+
+@app.get("/api/v1/dicomweb/studies/{study_instance_uid}/series")
+async def dicomweb_series(study_instance_uid: str) -> Any:
+    client = DicomWebClient()
+    try:
+        return client.qido_series(study_instance_uid)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"DICOMweb QIDO request failed: {exc}") from exc
+
+
+@app.get("/api/v1/dicomweb/studies/{study_instance_uid}/series/{series_instance_uid}/instances/{sop_instance_uid}")
+async def dicomweb_instance(study_instance_uid: str, series_instance_uid: str, sop_instance_uid: str) -> Response:
+    client = DicomWebClient()
+    try:
+        payload = client.wado_instance(study_instance_uid, series_instance_uid, sop_instance_uid)
+        return Response(content=payload, media_type="application/dicom")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"DICOMweb WADO request failed: {exc}") from exc
+
+
+@app.post("/api/v1/dicomweb/studies")
+async def dicomweb_stow(file: UploadFile = File(...)) -> dict[str, Any]:
+    client = DicomWebClient()
+    try:
+        payload = await file.read()
+        return {"status": "STORED", "response": client.stow(payload)}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"DICOMweb STOW request failed: {exc}") from exc
+
+
 @app.get("/api/v1/cases/{case_id}/dicom-metadata")
 async def get_case_dicom_metadata(case_id: str) -> dict[str, Any]:
     path = _absolute_case_file(case_id, "dicom_metadata.json")
