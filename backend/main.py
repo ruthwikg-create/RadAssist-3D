@@ -1274,6 +1274,23 @@ async def segment(
         ) from exc
 
 
+class AssistantRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+
+
+@app.post("/api/v1/cases/{case_id}/assistant")
+async def case_assistant(case_id: str, body: AssistantRequest) -> dict[str, Any]:
+    try:
+        result = load_case_result(case_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Case not found.") from exc
+    try:
+        return answer_ai(result, body.question)
+    except Exception as exc:
+        logger.exception("AI assistant request failed for %s", case_id)
+        raise HTTPException(status_code=502, detail=f"AI assistant provider failed: {exc}") from exc
+
+
 @app.get("/api/v1/dicomweb/status")
 async def dicomweb_status() -> dict[str, Any]:
     client = DicomWebClient()
