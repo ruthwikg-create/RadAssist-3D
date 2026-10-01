@@ -123,6 +123,15 @@ export type CaseResult = {
 
   label_component_qa?: Record<string, LabelComponentQA>;
 
+  heart_slice_qa?: {
+    status: string;
+    slice_count: number;
+    foreground_slices: number;
+    foreground_slice_fraction_pct?: number;
+    label_slice_coverage_pct?: Record<string, number>;
+    note?: string;
+  };
+
   measurement_quality?: MeasurementQuality;
 
   model_provenance?: ModelProvenance;
