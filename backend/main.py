@@ -1262,6 +1262,32 @@ async def demo(
             )
         )
 
+        # Keep demo cases on the same structured-result/report
+        # architecture as real segmentation cases. Demo input is
+        # intentionally synthetic, so it bypasses the clinical
+        # input contract while retaining provenance and QA metadata.
+        provenance_record = build_provenance(result_payload)
+        result_payload["provenance_record"] = provenance_record
+        result_payload["structured_measurements"] = (
+            provenance_record["structured_measurements"]
+        )
+        result_payload["dicom_seg_result"] = provenance_record["dicom_seg"]
+        result_payload["dicom_sr_result"] = provenance_record["dicom_sr"]
+        result_payload["uncertainty_status"] = (
+            provenance_record["structured_measurements"]["uncertainty_status"]
+        )
+
+        write_report_bundle(case_path, result_payload)
+        append_audit_event(
+            case_path,
+            "DEMO_CASE_CREATED",
+            request_id=case_id,
+            target=result_payload.get("target"),
+            source_type=result_payload.get("source_type"),
+            modality=result_payload.get("modality"),
+            qa_status=(result_payload.get("measurement_quality") or {}).get("status"),
+        )
+
         save_case_result(
             case_id,
             result_payload,
