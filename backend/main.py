@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import tempfile
@@ -18,9 +19,10 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, ORJSONResponse
+from fastapi.responses import FileResponse, ORJSONResponse, Response
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
+import SimpleITK as sitk
 
 try:
     from .case_store import (
@@ -837,6 +839,9 @@ async def get_case_bundle(
             / "segmentation_mask.nii.gz",
             directory / "report.json",
             directory / "audit.jsonl",
+            directory / "dicom_metadata.json",
+            directory / "segmentation.dcm",
+            directory / "structured_report.dcm",
         ]
 
         existing = [
@@ -1116,7 +1121,7 @@ async def segment(
             # Existing validated Spleen workflow.
             if target == "spleen":
 
-                result_payload, _, _ = (
+                result_payload, source_image, mask_image = (
                     await run_in_threadpool(
                         engine.segment,
                         input_paths,
@@ -1128,7 +1133,7 @@ async def segment(
             # Heart / Prostate multimodel workflow.
             else:
 
-                result_payload, _, _ = (
+                result_payload, source_image, mask_image = (
                     await run_in_threadpool(
                         engine.segment,
                         target,
@@ -1137,6 +1142,9 @@ async def segment(
                         case_path,
                     )
                 )
+
+            generated_dicom_seg: dict[str, Any] | None = None
+            generated_dicom_sr: dict[str, Any] | None = None
 
             if result_payload.get("source_type") == "DICOM":
                 dicom_root = (
@@ -1166,7 +1174,7 @@ async def segment(
                         )
                     ),
                 )
-                result_payload["dicom_seg_result"] = {
+                generated_dicom_seg = {
                     **(result_payload.get("dicom_seg_result") or {}),
                     **seg_info,
                     "status": "CREATED",
@@ -1189,8 +1197,8 @@ async def segment(
             provenance_record = build_provenance(result_payload)
             result_payload["provenance_record"] = provenance_record
             result_payload["structured_measurements"] = provenance_record["structured_measurements"]
-            result_payload["dicom_seg_result"] = provenance_record["dicom_seg"]
-            result_payload["dicom_sr_result"] = provenance_record["dicom_sr"]
+            result_payload["dicom_seg_result"] = generated_dicom_seg or provenance_record["dicom_seg"]
+            result_payload["dicom_sr_result"] = generated_dicom_sr or provenance_record["dicom_sr"]
             result_payload["uncertainty_status"] = provenance_record["structured_measurements"]["uncertainty_status"]
 
             if result_payload.get("source_type") == "DICOM":
@@ -1201,11 +1209,12 @@ async def segment(
                     target=target,
                     output_path=case_path / "structured_report.dcm",
                 )
-                result_payload["dicom_sr_result"] = {
+                generated_dicom_sr = {
                     **(result_payload.get("dicom_sr_result") or {}),
                     **sr_info,
                     "status": "CREATED",
                 }
+                result_payload["dicom_sr_result"] = generated_dicom_sr
 
             write_report_bundle(case_path, result_payload)
             append_audit_event(
