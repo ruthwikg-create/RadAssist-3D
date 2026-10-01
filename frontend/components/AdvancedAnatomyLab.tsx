@@ -58,6 +58,14 @@ export default function AdvancedAnatomyLab({result,backend}:{result:CaseResult|n
                 <div className="aal-model-foot"><span>Expected input</span><b>{model.input}</b></div>
               </article>;
             })}
+            <article className="aal-model aal-planned">
+              <div className="aal-model-icon"><Activity size={20}/></div>
+              <div className="aal-model-top"><b>Whole-Heart Multi-Structure</b><span className="warn">MODEL REQUIRED</span></div>
+              <div className="aal-model-meta"><span><FileImage size={12}/> MR / cardiac cine</span><span><Layers3 size={12}/> 3D multi-label model</span></div>
+              <p>Target architecture for the complete 3D anatomy shown in the reference workflow, including chambers, myocardium and major vessels.</p>
+              <div className="aal-chip-row">{["LA","RA","LV","RV","myocardium","aorta","pulmonary artery","SVC / IVC"].map((label) => <span key={label}>{label}</span>)}</div>
+              <div className="aal-model-foot"><span>Status</span><b>Requires dedicated whole-heart checkpoint</b></div>
+            </article>
           </div>
         </SectionCard>
 
