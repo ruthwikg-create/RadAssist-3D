@@ -361,7 +361,7 @@ def create_structured_report(
         group_measurements.append(
             hd.sr.Measurement(
                 name=codes.SCT.Volume if item["name"] == "segmented_volume" else (
-                    codes.SCT.SurfaceArea if item["name"] == "surface_area" else codes.SCT.Volume
+                    hd.sr.CodedConcept(value="RADASSIST-SURFACE-AREA", scheme_designator="99RADASSIST", meaning="Surface area") if item["name"] == "surface_area" else codes.SCT.Volume
                 ),
                 value=float(value),
                 unit=unit_code,
